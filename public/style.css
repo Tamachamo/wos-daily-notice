@@ -649,3 +649,20 @@ body {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* PWAインストールボタン */
+.install-btn {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.install-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+}
+
+/* iPhoneなどのスタンドアロン起動時のノッチ余白対応 */
+@media (display-mode: standalone) {
+  .app-header {
+    padding-top: env(safe-area-inset-top);
+  }
+}
