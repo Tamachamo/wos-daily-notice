@@ -1,8 +1,9 @@
 (() => {
   const state = {
     events: [],
-    // 作成画面の入力状態保持（画面遷移・マスタ再読込時も極力維持）
-    selections: {}, // { [eventId]: { checked: boolean, choiceIndex: number, text: string } }
+    tempEvents: [], // 「今回限り」で追加された単発イベント
+    tempIdCounter: 1,
+    selections: {}, // { [eventKey]: { checked: boolean, choiceIndex: number, text: string } }
     lastGeneratedText: ''
   };
 
@@ -22,6 +23,24 @@
   const uncheckAllBtn = document.getElementById('uncheckAllBtn');
   const saveFreeTextDefaultBtn = document.getElementById('saveFreeTextDefaultBtn');
 
+  // クイック追加モーダル関連
+  const openQuickAddBtn = document.getElementById('openQuickAddBtn');
+  const openQuickAddBottomBtn = document.getElementById('openQuickAddBottomBtn');
+  const quickAddModal = document.getElementById('quickAddModal');
+  const closeQuickAddBtn = document.getElementById('closeQuickAddBtn');
+  const cancelQuickAddBtn = document.getElementById('cancelQuickAddBtn');
+  const quickAddForm = document.getElementById('quickAddForm');
+  const quickTitleInput = document.getElementById('quickTitle');
+  const quickContentTypeRadios = document.querySelectorAll('input[name="quickContentType"]');
+  const quickTemplateArea = document.getElementById('quickTemplateArea');
+  const quickTemplateTextInput = document.getElementById('quickTemplateText');
+  const quickChoicesArea = document.getElementById('quickChoicesArea');
+  const quickChoiceRowsContainer = document.getElementById('quickChoiceRowsContainer');
+  const quickAddChoiceRowBtn = document.getElementById('quickAddChoiceRowBtn');
+  const quickSaveToMasterCheckbox = document.getElementById('quickSaveToMaster');
+  const submitQuickAddBtn = document.getElementById('submitQuickAddBtn');
+
+  // プレビュー画面
   const previewTextarea = document.getElementById('previewTextarea');
   const charCount = document.getElementById('charCount');
   const autoCopyStatus = document.getElementById('autoCopyStatus');
@@ -29,6 +48,7 @@
   const resetPreviewBtn = document.getElementById('resetPreviewBtn');
   const backToCreateBtn = document.getElementById('backToCreateBtn');
 
+  // 管理画面
   const eventForm = document.getElementById('eventForm');
   const formTitle = document.getElementById('formTitle');
   const editEventIdInput = document.getElementById('editEventId');
@@ -105,6 +125,43 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function addChoiceRowTo(container, label = '', text = '') {
+    const row = document.createElement('div');
+    row.className = 'choice-row';
+
+    const labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.className = 'input choice-label-input';
+    labelInput.placeholder = '選択肢名（例：1日目）';
+    labelInput.value = label;
+
+    const textInput = document.createElement('textarea');
+    textInput.className = 'textarea choice-text-input';
+    textInput.rows = 2;
+    textInput.placeholder = 'この選択肢の定型文';
+    textInput.value = text;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-danger btn-sm';
+    removeBtn.textContent = '削除';
+    removeBtn.addEventListener('click', () => row.remove());
+
+    row.appendChild(labelInput);
+    row.appendChild(textInput);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+  }
+
+  function collectChoicesFrom(container) {
+    return Array.from(container.querySelectorAll('.choice-row'))
+      .map((row) => ({
+        label: row.querySelector('.choice-label-input').value.trim(),
+        text: row.querySelector('.choice-text-input').value
+      }))
+      .filter((c) => c.label || c.text);
+  }
+
   // ===== API 通信 =====
   async function fetchEvents() {
     const res = await fetch('/api/events');
@@ -114,14 +171,14 @@
     }
     state.events = await res.json();
 
-    // 各イベントの選択状態を初期化（既存の入力内容は維持）
     state.events.forEach((ev) => {
-      if (!state.selections[ev.id]) {
+      const key = String(ev.id);
+      if (!state.selections[key]) {
         const initialText =
           ev.content_type === 'choices'
             ? ev.choices[0]?.text || ''
             : ev.template_text || '';
-        state.selections[ev.id] = {
+        state.selections[key] = {
           checked: false,
           choiceIndex: 0,
           text: initialText
@@ -147,89 +204,153 @@
   }
 
   // ===== 通知作成画面の描画 =====
-  function renderEventSelection() {
-    eventSelectList.innerHTML = '';
-    if (state.events.length === 0) {
-      eventSelectList.innerHTML =
-        '<p class="loading-text">登録されたイベントがありません。「イベント管理」から追加してください。</p>';
-      return;
+  function createEventRow(ev, isTemp = false) {
+    const key = String(ev.id);
+    const sel = state.selections[key];
+    const row = document.createElement('div');
+    row.className = 'event-row' + (sel.checked ? ' checked' : '');
+    row.dataset.eventKey = key;
+
+    const checkWrap = document.createElement('div');
+    checkWrap.className = 'event-check-wrap';
+
+    const checkCol = document.createElement('label');
+    checkCol.className = 'event-check-col';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = sel.checked;
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'event-title-wrap';
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'event-title-text';
+    titleSpan.textContent = ev.title;
+    titleWrap.appendChild(titleSpan);
+
+    if (isTemp) {
+      const tempBadge = document.createElement('span');
+      tempBadge.className = 'badge-temp';
+      tempBadge.textContent = '今回限り';
+      titleWrap.appendChild(tempBadge);
     }
 
-    state.events.forEach((ev) => {
-      const sel = state.selections[ev.id];
-      const row = document.createElement('div');
-      row.className = 'event-row' + (sel.checked ? ' checked' : '');
+    checkCol.appendChild(checkbox);
+    checkCol.appendChild(titleWrap);
+    checkWrap.appendChild(checkCol);
 
-      // 左側（スマホでは上側）：チェックボックス＋イベント名
-      const checkCol = document.createElement('label');
-      checkCol.className = 'event-check-col';
+    if (isTemp) {
+      const removeTempBtn = document.createElement('button');
+      removeTempBtn.type = 'button';
+      removeTempBtn.className = 'btn btn-ghost btn-sm';
+      removeTempBtn.textContent = '✕';
+      removeTempBtn.title = 'この今回限りイベントを削除';
+      removeTempBtn.addEventListener('click', () => {
+        state.tempEvents = state.tempEvents.filter((t) => t.id !== ev.id);
+        delete state.selections[key];
+        renderEventSelection();
+      });
+      checkWrap.appendChild(removeTempBtn);
+    }
 
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = sel.checked;
+    const editorCol = document.createElement('div');
+    editorCol.className = 'event-editor-col';
 
-      const titleSpan = document.createElement('span');
-      titleSpan.className = 'event-title-text';
-      titleSpan.textContent = ev.title;
+    const textarea = document.createElement('textarea');
+    textarea.className = 'textarea';
+    textarea.rows = 2;
+    textarea.placeholder = '通知内容（空欄の場合はタイトルのみ出力）';
+    textarea.value = sel.text;
 
-      checkCol.appendChild(checkbox);
-      checkCol.appendChild(titleSpan);
+    if (ev.content_type === 'choices' && ev.choices.length > 0) {
+      const select = document.createElement('select');
+      select.className = 'select';
+      ev.choices.forEach((choice, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = choice.label || `選択肢${idx + 1}`;
+        if (idx === sel.choiceIndex) opt.selected = true;
+        select.appendChild(opt);
+      });
 
-      // 右側（スマホでは下側）：選択肢（ある場合）＋編集可能な定型文欄
-      const editorCol = document.createElement('div');
-      editorCol.className = 'event-editor-col';
-
-      const textarea = document.createElement('textarea');
-      textarea.className = 'textarea';
-      textarea.rows = 2;
-      textarea.placeholder = '通知内容（空欄の場合はタイトルのみ出力）';
-      textarea.value = sel.text;
-
-      if (ev.content_type === 'choices' && ev.choices.length > 0) {
-        const select = document.createElement('select');
-        select.className = 'select';
-        ev.choices.forEach((choice, idx) => {
-          const opt = document.createElement('option');
-          opt.value = String(idx);
-          opt.textContent = choice.label || `選択肢${idx + 1}`;
-          if (idx === sel.choiceIndex) opt.selected = true;
-          select.appendChild(opt);
-        });
-
-        select.addEventListener('change', () => {
-          const idx = Number(select.value);
-          sel.choiceIndex = idx;
-          sel.text = ev.choices[idx]?.text || '';
-          textarea.value = sel.text;
-          if (!sel.checked) {
-            sel.checked = true;
-            checkbox.checked = true;
-            row.classList.add('checked');
-          }
-        });
-
-        editorCol.appendChild(select);
-      }
-
-      textarea.addEventListener('input', () => {
-        sel.text = textarea.value;
-        if (textarea.value.trim() && !sel.checked) {
+      select.addEventListener('change', () => {
+        const idx = Number(select.value);
+        sel.choiceIndex = idx;
+        sel.text = ev.choices[idx]?.text || '';
+        textarea.value = sel.text;
+        if (!sel.checked) {
           sel.checked = true;
           checkbox.checked = true;
           row.classList.add('checked');
         }
       });
 
-      checkbox.addEventListener('change', () => {
-        sel.checked = checkbox.checked;
-        row.classList.toggle('checked', sel.checked);
-      });
+      editorCol.appendChild(select);
+    }
 
-      editorCol.appendChild(textarea);
-      row.appendChild(checkCol);
-      row.appendChild(editorCol);
-      eventSelectList.appendChild(row);
+    textarea.addEventListener('input', () => {
+      sel.text = textarea.value;
+      if (textarea.value.trim() && !sel.checked) {
+        sel.checked = true;
+        checkbox.checked = true;
+        row.classList.add('checked');
+      }
     });
+
+    checkbox.addEventListener('change', () => {
+      sel.checked = checkbox.checked;
+      row.classList.toggle('checked', sel.checked);
+    });
+
+    editorCol.appendChild(textarea);
+    row.appendChild(checkWrap);
+    row.appendChild(editorCol);
+    return row;
+  }
+
+  function renderEventSelection() {
+    eventSelectList.innerHTML = '';
+    const allEmpty = state.events.length === 0 && state.tempEvents.length === 0;
+    if (allEmpty) {
+      eventSelectList.innerHTML =
+        '<p class="loading-text">登録されたイベントがありません。「＋ イベント追加」から作成してください。</p>';
+      return;
+    }
+
+    state.events.forEach((ev) => {
+      eventSelectList.appendChild(createEventRow(ev, false));
+    });
+
+    state.tempEvents.forEach((ev) => {
+      eventSelectList.appendChild(createEventRow(ev, true));
+    });
+  }
+
+  // ===== クイック追加モーダル =====
+  function updateQuickContentTypeUI() {
+    const selected = document.querySelector('input[name="quickContentType"]:checked')?.value || 'template';
+    quickTemplateArea.classList.toggle('hidden', selected !== 'template');
+    quickChoicesArea.classList.toggle('hidden', selected !== 'choices');
+
+    if (selected === 'choices' && quickChoiceRowsContainer.children.length === 0) {
+      addChoiceRowTo(quickChoiceRowsContainer, '', '');
+    }
+  }
+
+  function openQuickAddModal() {
+    quickTitleInput.value = '';
+    document.querySelector('input[name="quickContentType"][value="template"]').checked = true;
+    quickTemplateTextInput.value = '';
+    quickChoiceRowsContainer.innerHTML = '';
+    quickSaveToMasterCheckbox.checked = true;
+    updateQuickContentTypeUI();
+    quickAddModal.classList.remove('hidden');
+    setTimeout(() => quickTitleInput.focus(), 50);
+  }
+
+  function closeQuickAddModal() {
+    quickAddModal.classList.add('hidden');
   }
 
   // ===== 通知テキスト組み立て =====
@@ -252,10 +373,11 @@
       blocks.push(topBlock);
     }
 
-    // 2. 今日イベント
+    // 2. 今日イベント（マスタ + 今回限り）
     const eventItems = [];
-    state.events.forEach((ev) => {
-      const sel = state.selections[ev.id];
+    const combinedEvents = [...state.events, ...state.tempEvents];
+    combinedEvents.forEach((ev) => {
+      const sel = state.selections[String(ev.id)];
       if (!sel || !sel.checked) return;
 
       const content = (sel.text || '').trim();
@@ -271,7 +393,7 @@
       blocks.push(`●今日イベント\n${eventItems.join('\n\n')}`);
     }
 
-    // 3. 自由記述欄（行頭の全角スペース等を維持するため改行のみトリム）
+    // 3. 自由記述欄
     const freeText = freeTextInput.value.replace(/^\s*\n+|\n+\s*$/g, '');
     if (freeText.trim()) {
       blocks.push(freeText);
@@ -291,38 +413,8 @@
     choicesInputArea.classList.toggle('hidden', selected !== 'choices');
 
     if (selected === 'choices' && choiceRowsContainer.children.length === 0) {
-      addChoiceRow('', '');
+      addChoiceRowTo(choiceRowsContainer, '', '');
     }
-  }
-
-  function addChoiceRow(label = '', text = '') {
-    const row = document.createElement('div');
-    row.className = 'choice-row';
-
-    const labelInput = document.createElement('input');
-    labelInput.type = 'text';
-    labelInput.className = 'input choice-label-input';
-    labelInput.placeholder = '選択肢名（例：1日目）';
-    labelInput.value = label;
-
-    const textInput = document.createElement('textarea');
-    textInput.className = 'textarea choice-text-input';
-    textInput.rows = 2;
-    textInput.placeholder = 'この選択肢の定型文';
-    textInput.value = text;
-
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'btn btn-danger btn-sm';
-    removeBtn.textContent = '削除';
-    removeBtn.addEventListener('click', () => {
-      row.remove();
-    });
-
-    row.appendChild(labelInput);
-    row.appendChild(textInput);
-    row.appendChild(removeBtn);
-    choiceRowsContainer.appendChild(row);
   }
 
   function resetAdminForm() {
@@ -350,9 +442,9 @@
     choiceRowsContainer.innerHTML = '';
     if (ev.content_type === 'choices') {
       if (ev.choices.length > 0) {
-        ev.choices.forEach((c) => addChoiceRow(c.label, c.text));
+        ev.choices.forEach((c) => addChoiceRowTo(choiceRowsContainer, c.label, c.text));
       } else {
-        addChoiceRow('', '');
+        addChoiceRowTo(choiceRowsContainer, '', '');
       }
     }
 
@@ -420,7 +512,7 @@
         try {
           const res = await fetch(`/api/events/${ev.id}`, { method: 'DELETE' });
           if (!res.ok) throw new Error('削除に失敗しました');
-          delete state.selections[ev.id];
+          delete state.selections[String(ev.id)];
           if (editEventIdInput.value === String(ev.id)) {
             resetAdminForm();
           }
@@ -469,7 +561,106 @@
     }
   });
 
-  // 通知作成 → クリック操作内で自動コピー → 確認画面へ遷移
+  // クイック追加モーダル操作
+  openQuickAddBtn.addEventListener('click', openQuickAddModal);
+  openQuickAddBottomBtn.addEventListener('click', openQuickAddModal);
+  closeQuickAddBtn.addEventListener('click', closeQuickAddModal);
+  cancelQuickAddBtn.addEventListener('click', closeQuickAddModal);
+
+  quickAddModal.addEventListener('click', (e) => {
+    if (e.target === quickAddModal) closeQuickAddModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !quickAddModal.classList.contains('hidden')) {
+      closeQuickAddModal();
+    }
+  });
+
+  quickContentTypeRadios.forEach((radio) => {
+    radio.addEventListener('change', updateQuickContentTypeUI);
+  });
+
+  quickAddChoiceRowBtn.addEventListener('click', () => {
+    addChoiceRowTo(quickChoiceRowsContainer, '', '');
+  });
+
+  quickAddForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = quickTitleInput.value.trim();
+    if (!title) return;
+
+    const contentType = document.querySelector('input[name="quickContentType"]:checked')?.value || 'template';
+    const templateText = contentType === 'template' ? quickTemplateTextInput.value : '';
+    const choices = contentType === 'choices' ? collectChoicesFrom(quickChoiceRowsContainer) : [];
+    const saveToMaster = quickSaveToMasterCheckbox.checked;
+    const initialText = contentType === 'choices' ? choices[0]?.text || '' : templateText;
+
+    if (!saveToMaster) {
+      // 今回限りのイベントとしてローカル追加
+      const tempId = `temp_${state.tempIdCounter++}`;
+      state.tempEvents.push({
+        id: tempId,
+        title,
+        content_type: contentType,
+        template_text: templateText,
+        choices
+      });
+      state.selections[tempId] = {
+        checked: true,
+        choiceIndex: 0,
+        text: initialText
+      };
+      renderEventSelection();
+      closeQuickAddModal();
+      showToast(`「${title}」を今回限りで追加しました`);
+      eventSelectList.querySelector(`[data-event-key="${tempId}"]`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+      return;
+    }
+
+    // マスタへ保存しつつそのまま選択ONにする
+    submitQuickAddBtn.disabled = true;
+    try {
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          content_type: contentType,
+          template_text: templateText,
+          choices
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'マスタへの保存に失敗しました');
+      }
+      const created = await res.json();
+      const newKey = String(created.id);
+      state.selections[newKey] = {
+        checked: true,
+        choiceIndex: 0,
+        text: initialText
+      };
+
+      await fetchEvents();
+      closeQuickAddModal();
+      showToast(`「${title}」をマスタに登録＆選択しました`);
+      eventSelectList.querySelector(`[data-event-key="${newKey}"]`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      submitQuickAddBtn.disabled = false;
+    }
+  });
+
+  // 通知作成 → 自動コピー → 確認画面へ遷移
   generateBtn.addEventListener('click', async () => {
     const text = buildNoticeText();
     state.lastGeneratedText = text;
@@ -516,7 +707,9 @@
     radio.addEventListener('change', updateContentTypeUI);
   });
 
-  addChoiceRowBtn.addEventListener('click', () => addChoiceRow('', ''));
+  addChoiceRowBtn.addEventListener('click', () => {
+    addChoiceRowTo(choiceRowsContainer, '', '');
+  });
   resetFormBtn.addEventListener('click', resetAdminForm);
 
   eventForm.addEventListener('submit', async (e) => {
@@ -524,16 +717,13 @@
 
     const id = editEventIdInput.value;
     const contentType = document.querySelector('input[name="contentType"]:checked')?.value || 'template';
-    const choices = Array.from(choiceRowsContainer.querySelectorAll('.choice-row')).map((row) => ({
-      label: row.querySelector('.choice-label-input').value.trim(),
-      text: row.querySelector('.choice-text-input').value
-    }));
+    const choices = contentType === 'choices' ? collectChoicesFrom(choiceRowsContainer) : [];
 
     const payload = {
       title: masterTitleInput.value.trim(),
       content_type: contentType,
       template_text: contentType === 'template' ? masterTemplateTextInput.value : '',
-      choices: contentType === 'choices' ? choices : [],
+      choices,
       sort_order: masterSortOrderInput.value === '' ? undefined : Number(masterSortOrderInput.value)
     };
 
@@ -551,14 +741,14 @@
         throw new Error(err.error || '保存に失敗しました');
       }
 
-      // 編集時は作成画面の定型文も最新マスタへ同期
       if (id) {
-        const wasChecked = state.selections[id]?.checked ?? false;
+        const key = String(id);
+        const wasChecked = state.selections[key]?.checked ?? false;
         const nextText =
           payload.content_type === 'choices'
             ? payload.choices[0]?.text || ''
             : payload.template_text || '';
-        state.selections[id] = { checked: wasChecked, choiceIndex: 0, text: nextText };
+        state.selections[key] = { checked: wasChecked, choiceIndex: 0, text: nextText };
       }
 
       resetAdminForm();
