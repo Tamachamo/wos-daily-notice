@@ -666,3 +666,58 @@ body {
     padding-top: env(safe-area-inset-top);
   }
 }
+
+/* ===== ドラッグ並び替え ===== */
+body.is-dragging {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grabbing;
+}
+
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 32px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color 0.15s, background 0.15s;
+}
+
+.drag-handle:hover {
+  color: var(--primary);
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+  color: var(--primary);
+}
+
+.admin-item-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.event-row.dragging,
+.admin-item.dragging {
+  border-color: var(--primary);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
+  opacity: 0.96;
+  cursor: grabbing;
+}
+
+.drag-placeholder {
+  border: 2px dashed var(--primary);
+  background: rgba(56, 189, 248, 0.08);
+  border-radius: 8px;
+}
