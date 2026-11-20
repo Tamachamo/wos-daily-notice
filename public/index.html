@@ -42,11 +42,19 @@
       <div class="card">
         <div class="section-header-row">
           <h2 class="section-title">3. 今日イベント選択</h2>
-          <button type="button" id="uncheckAllBtn" class="btn btn-ghost btn-sm">選択を全解除</button>
+          <div class="header-btn-group">
+            <button type="button" id="openQuickAddBtn" class="btn btn-primary btn-sm">＋ イベント追加</button>
+            <button type="button" id="uncheckAllBtn" class="btn btn-ghost btn-sm">選択を全解除</button>
+          </div>
         </div>
         <p class="hint">チェックを入れたイベントが通知に反映されます。定型文はその場で自由に編集でき、空欄ならタイトルのみ出力されます。</p>
         <div id="eventSelectList" class="event-select-list">
           <p class="loading-text">読み込み中...</p>
+        </div>
+        <div class="list-footer-action">
+          <button type="button" id="openQuickAddBottomBtn" class="btn btn-secondary btn-full">
+            ＋ 未登録のイベントをここから追加する
+          </button>
         </div>
       </div>
 
@@ -145,7 +153,6 @@
             </div>
           </div>
 
-          <!-- 定型文エリア -->
           <div id="templateInputArea" class="form-group">
             <label for="masterTemplateText" class="label">定型文（空欄可）</label>
             <p class="hint">出力時に先頭へ自動で「→」が付きます。タイトルのみ表示したい場合は空欄にしてください。</p>
@@ -157,7 +164,6 @@
             ></textarea>
           </div>
 
-          <!-- 選択肢登録エリア -->
           <div id="choicesInputArea" class="form-group hidden">
             <div class="section-header-row">
               <span class="label">選択肢と定型文のリスト</span>
@@ -183,6 +189,76 @@
       </div>
     </section>
   </main>
+
+  <!-- ========== クイックイベント追加モーダル ========== -->
+  <div id="quickAddModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="quickAddTitle">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2 id="quickAddTitle" class="section-title">イベントをクイック追加</h2>
+        <button type="button" id="closeQuickAddBtn" class="btn btn-ghost btn-sm" aria-label="閉じる">✕</button>
+      </div>
+
+      <form id="quickAddForm" class="admin-form">
+        <div class="form-group">
+          <label for="quickTitle" class="label">イベントタイトル <span class="req">*</span></label>
+          <input
+            type="text"
+            id="quickTitle"
+            class="input"
+            required
+            placeholder="例：同盟大作戦 / 兵器工場争奪戦"
+          />
+        </div>
+
+        <div class="form-group">
+          <span class="label">通知内容タイプ</span>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="quickContentType" value="template" checked />
+              <span>定型文</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="quickContentType" value="choices" />
+              <span>選択肢登録</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="quickTemplateArea" class="form-group">
+          <label for="quickTemplateText" class="label">定型文（空欄可）</label>
+          <textarea
+            id="quickTemplateText"
+            class="textarea"
+            rows="3"
+            placeholder="空欄の場合はタイトルのみ出力されます"
+          ></textarea>
+        </div>
+
+        <div id="quickChoicesArea" class="form-group hidden">
+          <div class="section-header-row">
+            <span class="label">選択肢と定型文</span>
+            <button type="button" id="quickAddChoiceRowBtn" class="btn btn-secondary btn-sm">
+              ＋ 選択肢を追加
+            </button>
+          </div>
+          <div id="quickChoiceRowsContainer" class="choice-rows"></div>
+        </div>
+
+        <label class="save-master-toggle">
+          <input type="checkbox" id="quickSaveToMaster" checked />
+          <div>
+            <strong>マスタにも保存する（次回以降も全員に表示）</strong>
+            <span class="toggle-sub">チェックを外すと、今回限りの単発イベントとして追加されます</span>
+          </div>
+        </label>
+
+        <div class="modal-actions">
+          <button type="button" id="cancelQuickAddBtn" class="btn btn-ghost">キャンセル</button>
+          <button type="submit" id="submitQuickAddBtn" class="btn btn-primary">追加してチェックを入れる</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
