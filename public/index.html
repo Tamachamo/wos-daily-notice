@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ホワサバ 同盟通知メーカー</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <h1>❄️ ホワサバ 同盟通知メーカー</h1>
+      <nav class="nav-tabs" aria-label="画面切替">
+        <button type="button" class="tab-btn active" data-view="create">📝 通知作成</button>
+        <button type="button" class="tab-btn" data-view="admin">⚙️ イベント管理</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ========== 1. 通知作成画面 ========== -->
+    <section id="view-create" class="view active">
+      <div class="card">
+        <h2 class="section-title">1. 日付選択</h2>
+        <div class="date-row">
+          <input type="date" id="noticeDate" class="input" />
+          <span id="datePreview" class="date-badge"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="section-title">2. 今日の予定</h2>
+        <p class="hint">1行につき1件入力してください（行頭に「・」がない場合は自動で付与されます）</p>
+        <textarea
+          id="todaySchedule"
+          class="textarea"
+          rows="4"
+          placeholder="18時 7号砦&#10;22時 2号要塞・1号砦&#10;23時 6号砦"
+        ></textarea>
+      </div>
+
+      <div class="card">
+        <div class="section-header-row">
+          <h2 class="section-title">3. 今日イベント選択</h2>
+          <button type="button" id="uncheckAllBtn" class="btn btn-ghost btn-sm">選択を全解除</button>
+        </div>
+        <p class="hint">チェックを入れたイベントが通知に反映されます。定型文はその場で自由に編集でき、空欄ならタイトルのみ出力されます。</p>
+        <div id="eventSelectList" class="event-select-list">
+          <p class="loading-text">読み込み中...</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-header-row">
+          <h2 class="section-title">4. 自由記述欄</h2>
+          <button type="button" id="saveFreeTextDefaultBtn" class="btn btn-secondary btn-sm">
+            💾 全員共通の初期値として保存
+          </button>
+        </div>
+        <p class="hint">今週の予定や連絡事項などを記入できます。</p>
+        <textarea
+          id="freeText"
+          class="textarea"
+          rows="5"
+          placeholder="【今週の予定】&#10;土曜日 国内王城(HOT同盟移籍予定)"
+        ></textarea>
+      </div>
+
+      <div class="action-bar">
+        <button type="button" id="generateBtn" class="btn btn-primary btn-lg">
+          📋 通知を作成して確認画面へ（自動コピー）
+        </button>
+      </div>
+    </section>
+
+    <!-- ========== 2. 確認・微調整画面 ========== -->
+    <section id="view-preview" class="view">
+      <div class="card">
+        <div class="section-header-row">
+          <h2 class="section-title">完成プレビュー・微調整</h2>
+          <span id="charCount" class="char-count">0文字</span>
+        </div>
+        <div id="autoCopyStatus" class="status-banner"></div>
+        <p class="hint">下のテキストエリアで直接微調整できます。修正後は「テキストをコピー」を押してください。</p>
+        <textarea id="previewTextarea" class="textarea preview-textarea" rows="18"></textarea>
+
+        <div class="preview-actions">
+          <button type="button" id="copyAgainBtn" class="btn btn-primary btn-lg">
+            📋 テキストをコピー
+          </button>
+          <div class="preview-sub-actions">
+            <button type="button" id="resetPreviewBtn" class="btn btn-secondary">
+              🔄 微調整を元に戻す
+            </button>
+            <button type="button" id="backToCreateBtn" class="btn btn-ghost">
+              ← 入力画面に戻る
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 3. イベントマスタ管理画面 ========== -->
+    <section id="view-admin" class="view">
+      <div class="card">
+        <div class="section-header-row">
+          <h2 id="formTitle" class="section-title">イベント新規登録</h2>
+          <button type="button" id="resetFormBtn" class="btn btn-ghost btn-sm hidden">
+            キャンセル
+          </button>
+        </div>
+
+        <form id="eventForm" class="admin-form">
+          <input type="hidden" id="editEventId" />
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="masterTitle" class="label">イベントタイトル <span class="req">*</span></label>
+              <input
+                type="text"
+                id="masterTitle"
+                class="input"
+                required
+                placeholder="例：氷原の支配者 / 夢幻追憶ฅ^•ω•^ฅﾆｬｰ"
+              />
+            </div>
+
+            <div class="form-group form-group-sm">
+              <label for="masterSortOrder" class="label">表示順</label>
+              <input type="number" id="masterSortOrder" class="input" placeholder="自動" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <span class="label">通知内容タイプ</span>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="contentType" value="template" checked />
+                <span>定型文</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="contentType" value="choices" />
+                <span>選択肢登録</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 定型文エリア -->
+          <div id="templateInputArea" class="form-group">
+            <label for="masterTemplateText" class="label">定型文（空欄可）</label>
+            <p class="hint">出力時に先頭へ自動で「→」が付きます。タイトルのみ表示したい場合は空欄にしてください。</p>
+            <textarea
+              id="masterTemplateText"
+              class="textarea"
+              rows="3"
+              placeholder="例：タイルキル禁止！セカチャのテントぶつかり稽古か砦要塞戦..."
+            ></textarea>
+          </div>
+
+          <!-- 選択肢登録エリア -->
+          <div id="choicesInputArea" class="form-group hidden">
+            <div class="section-header-row">
+              <span class="label">選択肢と定型文のリスト</span>
+              <button type="button" id="addChoiceRowBtn" class="btn btn-secondary btn-sm">
+                ＋ 選択肢を追加
+              </button>
+            </div>
+            <p class="hint">通知作成画面で選択肢を選ぶと、対応する定型文が自動セットされます。</p>
+            <div id="choiceRowsContainer" class="choice-rows"></div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="saveEventBtn" class="btn btn-primary">保存する</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="section-title">登録済みイベント一覧</h2>
+        <div id="adminEventList" class="admin-event-list">
+          <p class="loading-text">読み込み中...</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
