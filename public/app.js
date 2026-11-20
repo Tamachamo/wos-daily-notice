@@ -13,7 +13,7 @@
     preview: document.getElementById('view-preview'),
     admin: document.getElementById('view-admin')
   };
-  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabBtns = document.querySelectorAll('.tab-btn[data-view]');
   const noticeDateInput = document.getElementById('noticeDate');
   const datePreview = document.getElementById('datePreview');
   const todayScheduleInput = document.getElementById('todaySchedule');
@@ -125,6 +125,20 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function createDragHandle() {
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.title = 'ドラッグして並び替え';
+    handle.setAttribute('aria-label', 'ドラッグして並び替え');
+    handle.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">' +
+      '<circle cx="5.5" cy="3" r="1.4"/><circle cx="10.5" cy="3" r="1.4"/>' +
+      '<circle cx="5.5" cy="8" r="1.4"/><circle cx="10.5" cy="8" r="1.4"/>' +
+      '<circle cx="5.5" cy="13" r="1.4"/><circle cx="10.5" cy="13" r="1.4"/>' +
+      '</svg>';
+    return handle;
+  }
+
   function addChoiceRowTo(container, label = '', text = '') {
     const row = document.createElement('div');
     row.className = 'choice-row';
@@ -160,6 +174,179 @@
         text: row.querySelector('.choice-text-input').value
       }))
       .filter((c) => c.label || c.text);
+  }
+
+  // ===== ドラッグ並び替え（PCマウス・スマホタッチ両対応） =====
+  function setupDragSort(container, itemSelector, onReorder) {
+    let dragItem = null;
+    let placeholder = null;
+    let activeHandle = null;
+    let activePointerId = null;
+    let offsetY = 0;
+    let initialOrder = [];
+
+    function getOrder() {
+      return Array.from(container.querySelectorAll(itemSelector))
+        .filter((el) => el.dataset.draggable === 'true')
+        .map((el) => Number(el.dataset.eventId));
+    }
+
+    function onPointerMove(e) {
+      if (!dragItem || e.pointerId !== activePointerId) return;
+      e.preventDefault();
+
+      dragItem.style.top = `${e.clientY - offsetY}px`;
+
+      // 画面端付近のオートスクロール
+      const edge = 72;
+      if (e.clientY < edge) {
+        window.scrollBy(0, -10);
+      } else if (e.clientY > window.innerHeight - edge) {
+        window.scrollBy(0, 10);
+      }
+
+      const siblings = Array.from(container.querySelectorAll(itemSelector)).filter(
+        (el) => el !== dragItem && el.dataset.draggable === 'true'
+      );
+
+      let inserted = false;
+      for (const sibling of siblings) {
+        const box = sibling.getBoundingClientRect();
+        const midY = box.top + box.height / 2;
+        if (e.clientY < midY) {
+          container.insertBefore(placeholder, sibling);
+          inserted = true;
+          break;
+        }
+      }
+
+      if (!inserted) {
+        const lastDraggable = siblings[siblings.length - 1];
+        if (lastDraggable && lastDraggable.nextSibling) {
+          container.insertBefore(placeholder, lastDraggable.nextSibling);
+        } else {
+          container.appendChild(placeholder);
+        }
+      }
+    }
+
+    function finishDrag(e) {
+      if (!dragItem || e.pointerId !== activePointerId) return;
+
+      if (activeHandle) {
+        activeHandle.removeEventListener('pointermove', onPointerMove);
+        activeHandle.removeEventListener('pointerup', finishDrag);
+        activeHandle.removeEventListener('pointercancel', finishDrag);
+        try {
+          activeHandle.releasePointerCapture(activePointerId);
+        } catch {
+          // 既に解放済みの場合は無視
+        }
+      }
+
+      dragItem.classList.remove('dragging');
+      dragItem.style.position = '';
+      dragItem.style.top = '';
+      dragItem.style.left = '';
+      dragItem.style.width = '';
+      dragItem.style.zIndex = '';
+      dragItem.style.pointerEvents = '';
+
+      if (placeholder && placeholder.parentNode) {
+        placeholder.replaceWith(dragItem);
+      }
+
+      document.body.classList.remove('is-dragging');
+
+      const newOrder = getOrder();
+      const changed =
+        newOrder.length === initialOrder.length &&
+        newOrder.some((id, idx) => id !== initialOrder[idx]);
+
+      dragItem = null;
+      placeholder = null;
+      activeHandle = null;
+      activePointerId = null;
+
+      if (changed) {
+        onReorder(newOrder);
+      }
+    }
+
+    container.addEventListener('pointerdown', (e) => {
+      const handle = e.target.closest('.drag-handle');
+      if (!handle || !container.contains(handle)) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+      const item = handle.closest(itemSelector);
+      if (!item || item.dataset.draggable !== 'true') return;
+
+      e.preventDefault();
+
+      dragItem = item;
+      activeHandle = handle;
+      activePointerId = e.pointerId;
+      initialOrder = getOrder();
+
+      const rect = dragItem.getBoundingClientRect();
+      offsetY = e.clientY - rect.top;
+
+      placeholder = document.createElement('div');
+      placeholder.className = 'drag-placeholder';
+      placeholder.style.height = `${rect.height}px`;
+
+      dragItem.parentNode.insertBefore(placeholder, dragItem);
+
+      dragItem.classList.add('dragging');
+      dragItem.style.position = 'fixed';
+      dragItem.style.top = `${rect.top}px`;
+      dragItem.style.left = `${rect.left}px`;
+      dragItem.style.width = `${rect.width}px`;
+      dragItem.style.zIndex = '90';
+      dragItem.style.pointerEvents = 'none';
+
+      document.body.classList.add('is-dragging');
+
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {
+        // 未対応環境フォールバック
+      }
+
+      handle.addEventListener('pointermove', onPointerMove);
+      handle.addEventListener('pointerup', finishDrag);
+      handle.addEventListener('pointercancel', finishDrag);
+    });
+  }
+
+  async function saveEventOrder(orderedIds) {
+    // 画面上の状態を即座に新順序へ更新
+    const eventMap = new Map(state.events.map((ev) => [ev.id, ev]));
+    state.events = orderedIds
+      .map((id, idx) => {
+        const ev = eventMap.get(id);
+        return ev ? { ...ev, sort_order: idx + 1 } : null;
+      })
+      .filter(Boolean);
+
+    renderEventSelection();
+    renderAdminList();
+
+    try {
+      const res = await fetch('/api/events/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderedIds })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '並び順の保存に失敗しました');
+      }
+      showToast('並び順を保存しました');
+    } catch (err) {
+      alert(err.message);
+      await fetchEvents(); // 失敗時はDBの順序に復元
+    }
   }
 
   // ===== API 通信 =====
@@ -210,9 +397,17 @@
     const row = document.createElement('div');
     row.className = 'event-row' + (sel.checked ? ' checked' : '');
     row.dataset.eventKey = key;
+    if (!isTemp) {
+      row.dataset.eventId = String(ev.id);
+      row.dataset.draggable = 'true';
+    }
 
     const checkWrap = document.createElement('div');
     checkWrap.className = 'event-check-wrap';
+
+    if (!isTemp) {
+      checkWrap.appendChild(createDragHandle());
+    }
 
     const checkCol = document.createElement('label');
     checkCol.className = 'event-check-col';
@@ -357,7 +552,6 @@
   function buildNoticeText() {
     const blocks = [];
 
-    // 1. 日付 + 今日の予定
     const dateStr = formatJapaneseDate(noticeDateInput.value);
     const scheduleLines = todayScheduleInput.value
       .split(/\r?\n/)
@@ -373,7 +567,6 @@
       blocks.push(topBlock);
     }
 
-    // 2. 今日イベント（マスタ + 今回限り）
     const eventItems = [];
     const combinedEvents = [...state.events, ...state.tempEvents];
     combinedEvents.forEach((ev) => {
@@ -393,7 +586,6 @@
       blocks.push(`●今日イベント\n${eventItems.join('\n\n')}`);
     }
 
-    // 3. 自由記述欄
     const freeText = freeTextInput.value.replace(/^\s*\n+|\n+\s*$/g, '');
     if (freeText.trim()) {
       blocks.push(freeText);
@@ -463,6 +655,12 @@
     state.events.forEach((ev) => {
       const item = document.createElement('div');
       item.className = 'admin-item';
+      item.dataset.eventId = String(ev.id);
+      item.dataset.draggable = 'true';
+
+      const leftWrap = document.createElement('div');
+      leftWrap.className = 'admin-item-left';
+      leftWrap.appendChild(createDragHandle());
 
       const info = document.createElement('div');
       info.className = 'admin-item-info';
@@ -493,6 +691,7 @@
 
       info.appendChild(titleRow);
       info.appendChild(desc);
+      leftWrap.appendChild(info);
 
       const actions = document.createElement('div');
       actions.className = 'admin-item-actions';
@@ -525,7 +724,7 @@
 
       actions.appendChild(editBtn);
       actions.appendChild(delBtn);
-      item.appendChild(info);
+      item.appendChild(leftWrap);
       item.appendChild(actions);
       adminEventList.appendChild(item);
     });
@@ -597,7 +796,6 @@
     const initialText = contentType === 'choices' ? choices[0]?.text || '' : templateText;
 
     if (!saveToMaster) {
-      // 今回限りのイベントとしてローカル追加
       const tempId = `temp_${state.tempIdCounter++}`;
       state.tempEvents.push({
         id: tempId,
@@ -621,7 +819,6 @@
       return;
     }
 
-    // マスタへ保存しつつそのまま選択ONにする
     submitQuickAddBtn.disabled = true;
     try {
       const res = await fetch('/api/events', {
@@ -759,19 +956,7 @@
     }
   });
 
-  // ===== 初期化 =====
-  async function init() {
-    noticeDateInput.value = getTodayLocalISO();
-    datePreview.textContent = formatJapaneseDate(noticeDateInput.value);
-
-    try {
-      await Promise.all([fetchEvents(), fetchSettings()]);
-    } catch (err) {
-      eventSelectList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
-      adminEventList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
-    }
-  }
-// ===== PWA（Service Worker登録 & インストールボタン） =====
+  // ===== PWA（Service Worker登録 & インストールボタン） =====
   const installAppBtn = document.getElementById('installAppBtn');
   let deferredInstallPrompt = null;
 
@@ -795,7 +980,6 @@
 
     if (!installAppBtn || isStandaloneMode()) return;
 
-    // Android Chrome / PC Chrome / Edge
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstallPrompt = e;
@@ -808,7 +992,6 @@
       showToast('アプリをインストールしました！');
     });
 
-    // iOS Safariは自動プロンプト非対応のため手順ガイドを表示
     if (isIOSDevice()) {
       installAppBtn.classList.remove('hidden');
     }
@@ -832,6 +1015,23 @@
     });
   }
 
-  setupPWA();
+  // ===== 初期化 =====
+  async function init() {
+    noticeDateInput.value = getTodayLocalISO();
+    datePreview.textContent = formatJapaneseDate(noticeDateInput.value);
+
+    // 作成画面・管理画面の両方でドラッグ並び替えを有効化
+    setupDragSort(eventSelectList, '.event-row', saveEventOrder);
+    setupDragSort(adminEventList, '.admin-item', saveEventOrder);
+    setupPWA();
+
+    try {
+      await Promise.all([fetchEvents(), fetchSettings()]);
+    } catch (err) {
+      eventSelectList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
+      adminEventList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
+    }
+  }
+
   init();
 })();
