@@ -771,6 +771,67 @@
       adminEventList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
     }
   }
+// ===== PWA（Service Worker登録 & インストールボタン） =====
+  const installAppBtn = document.getElementById('installAppBtn');
+  let deferredInstallPrompt = null;
 
+  function isStandaloneMode() {
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true
+    );
+  }
+
+  function isIOSDevice() {
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }
+
+  function setupPWA() {
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+
+    if (!installAppBtn || isStandaloneMode()) return;
+
+    // Android Chrome / PC Chrome / Edge
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      installAppBtn.classList.remove('hidden');
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      installAppBtn.classList.add('hidden');
+      showToast('アプリをインストールしました！');
+    });
+
+    // iOS Safariは自動プロンプト非対応のため手順ガイドを表示
+    if (isIOSDevice()) {
+      installAppBtn.classList.remove('hidden');
+    }
+
+    installAppBtn.addEventListener('click', async () => {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') {
+          installAppBtn.classList.add('hidden');
+        }
+        deferredInstallPrompt = null;
+      } else if (isIOSDevice()) {
+        alert(
+          '【iPhone / iPadでのアプリ化手順】\n' +
+          '1. Safari下部（または上部）の共有ボタン（□↑）をタップ\n' +
+          '2.「ホーム画面に追加」を選択\n' +
+          '3. 右上の「追加」をタップ'
+        );
+      }
+    });
+  }
+
+  setupPWA();
   init();
 })();
