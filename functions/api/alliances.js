@@ -17,21 +17,46 @@ function generateId() {
   return 'al_' + Math.random().toString(36).slice(2, 8);
 }
 
-export async function onRequestGet({ env }) {
+function generateShareToken() {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+}
+
+export async function onRequestGet({ request, env }) {
   if (!env.DB) {
     return jsonResponse({ error: 'D1バインディング(DB)が設定されていません' }, 500);
   }
   try {
+    const url = new URL(request.url);
+    const shareToken = (url.searchParams.get('share_token') || '').trim();
+
+    // 外部共有URLからのアクセス：該当する1同盟のみ返す（他同盟は一切返さない）
+    if (shareToken) {
+      const row = await env.DB.prepare(
+        'SELECT id, name, default_free_text, sort_order FROM alliances WHERE share_token = ?'
+      )
+        .bind(shareToken)
+        .first();
+
+      if (!row) {
+        return jsonResponse({ error: '無効な共有URLです。管理者に最新のURLを確認してください。' }, 404);
+      }
+      return jsonResponse([row]);
+    }
+
+    // 通常アクセス：全同盟一覧を返す
     let { results } = await env.DB.prepare(
-      'SELECT id, name, default_free_text, sort_order FROM alliances ORDER BY sort_order ASC, created_at ASC'
+      'SELECT id, name, default_free_text, sort_order, share_token FROM alliances ORDER BY sort_order ASC, created_at ASC'
     ).all();
 
     if (results.length === 0) {
+      const token = generateShareToken();
       await env.DB.prepare(
-        "INSERT OR IGNORE INTO alliances (id, name, default_free_text, sort_order) VALUES ('default', 'メイン同盟', '', 1)"
-      ).run();
+        "INSERT OR IGNORE INTO alliances (id, name, default_free_text, sort_order, share_token) VALUES ('default', 'メイン同盟', '', 1, ?)"
+      )
+        .bind(token)
+        .run();
       const retry = await env.DB.prepare(
-        'SELECT id, name, default_free_text, sort_order FROM alliances ORDER BY sort_order ASC, created_at ASC'
+        'SELECT id, name, default_free_text, sort_order, share_token FROM alliances ORDER BY sort_order ASC, created_at ASC'
       ).all();
       results = retry.results;
     }
@@ -65,6 +90,7 @@ export async function onRequestPost({ request, env }) {
 
     const maxRow = await env.DB.prepare('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM alliances').first();
     const sortOrder = (maxRow?.max_order || 0) + 1;
+    const shareToken = generateShareToken();
 
     const copyFromId = String(body.copy_from_id || '').trim();
     let initialFreeText = '';
@@ -73,21 +99,25 @@ export async function onRequestPost({ request, env }) {
     if (copyFromId) {
       const srcAlliance = await env.DB.prepare(
         'SELECT default_free_text FROM alliances WHERE id = ?'
-      ).bind(copyFromId).first();
+      )
+        .bind(copyFromId)
+        .first();
       if (srcAlliance) {
         initialFreeText = srcAlliance.default_free_text || '';
       }
 
       const srcEventsRes = await env.DB.prepare(
         'SELECT title, content_type, template_text, choices_json, sort_order FROM events WHERE alliance_id = ? ORDER BY sort_order ASC, id ASC'
-      ).bind(copyFromId).all();
+      )
+        .bind(copyFromId)
+        .all();
       sourceEvents = srcEventsRes.results || [];
     }
 
     const statements = [
       env.DB.prepare(
-        'INSERT INTO alliances (id, name, default_free_text, sort_order) VALUES (?, ?, ?, ?)'
-      ).bind(id, name, initialFreeText, sortOrder)
+        'INSERT INTO alliances (id, name, default_free_text, sort_order, share_token) VALUES (?, ?, ?, ?, ?)'
+      ).bind(id, name, initialFreeText, sortOrder, shareToken)
     ];
 
     for (const ev of sourceEvents) {
@@ -106,6 +136,7 @@ export async function onRequestPost({ request, env }) {
         name,
         default_free_text: initialFreeText,
         sort_order: sortOrder,
+        share_token: shareToken,
         copied_events_count: sourceEvents.length
       },
       201
