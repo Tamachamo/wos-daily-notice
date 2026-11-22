@@ -721,3 +721,116 @@ body.is-dragging {
   background: rgba(56, 189, 248, 0.08);
   border-radius: 8px;
 }
+
+/* ===== 同盟（箱）切り替えバー＆管理モーダル ===== */
+.alliance-bar {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.alliance-bar-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 8px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.alliance-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 190px;
+}
+
+.alliance-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.alliance-select {
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  max-width: 280px;
+}
+
+.alliance-bar-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.alliance-create-box {
+  padding: 12px;
+  background: var(--surface-sub);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.sub-section-title {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
+
+.alliance-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alliance-manage-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-sub);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.alliance-manage-item.current {
+  border-color: var(--primary);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+@media (min-width: 600px) {
+  .alliance-manage-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.alliance-manage-meta {
+  min-width: 0;
+}
+
+.alliance-manage-name {
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.alliance-manage-id {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.alliance-manage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
