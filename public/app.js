@@ -2,6 +2,8 @@
   const LAST_ALLIANCE_KEY = 'wos_last_alliance_id';
 
   const state = {
+    isShareMode: false,
+    shareToken: '',
     alliances: [],
     currentAllianceId: 'default',
     events: [],
@@ -18,10 +20,14 @@
     admin: document.getElementById('view-admin')
   };
   const tabBtns = document.querySelectorAll('.tab-btn[data-view]');
+  const shareErrorCard = document.getElementById('shareErrorCard');
+  const shareErrorMessage = document.getElementById('shareErrorMessage');
 
   // 同盟（箱）関連
   const allianceSelect = document.getElementById('allianceSelect');
-  const copyAllianceUrlBtn = document.getElementById('copyAllianceUrlBtn');
+  const lockedAllianceName = document.getElementById('lockedAllianceName');
+  const allianceBarActions = document.getElementById('allianceBarActions');
+  const copyShareUrlBtn = document.getElementById('copyShareUrlBtn');
   const openAllianceModalBtn = document.getElementById('openAllianceModalBtn');
   const allianceModal = document.getElementById('allianceModal');
   const closeAllianceModalBtn = document.getElementById('closeAllianceModalBtn');
@@ -145,8 +151,9 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function getAllianceShareUrl(allianceId) {
-    return `${window.location.origin}/?alliance=${encodeURIComponent(allianceId)}`;
+  function getExternalShareUrl(alliance) {
+    if (!alliance?.share_token) return '';
+    return `${window.location.origin}/?share=${encodeURIComponent(alliance.share_token)}`;
   }
 
   function getCurrentAlliance() {
@@ -154,8 +161,11 @@
   }
 
   function syncUrlWithAlliance(allianceId) {
+    // 外部共有モードでは ?share=xxx を維持し、URL書き換え・他同盟記憶を行わない
+    if (state.isShareMode) return;
     try {
       const url = new URL(window.location.href);
+      url.searchParams.delete('share');
       url.searchParams.set('alliance', allianceId);
       window.history.replaceState({}, '', url.toString());
     } catch {
@@ -166,6 +176,24 @@
     } catch {
       // 無視
     }
+  }
+
+  function applyShareModeUI(allianceName) {
+    allianceSelect.classList.add('hidden');
+    allianceBarActions.classList.add('hidden');
+    lockedAllianceName.classList.remove('hidden');
+    lockedAllianceName.textContent = allianceName;
+    document.title = `${allianceName}｜ホワサバ 同盟通知メーカー`;
+  }
+
+  function showShareAccessError(message) {
+    Object.values(views).forEach((el) => el.classList.remove('active'));
+    tabBtns.forEach((btn) => btn.classList.add('hidden'));
+    allianceSelect.classList.add('hidden');
+    allianceBarActions.classList.add('hidden');
+    lockedAllianceName.classList.add('hidden');
+    shareErrorMessage.textContent = message;
+    shareErrorCard.classList.remove('hidden');
   }
 
   function createDragHandle() {
@@ -392,16 +420,29 @@
 
   // ===== 同盟（箱）管理 =====
   async function fetchAlliances() {
-    const res = await fetch('/api/alliances');
+    const endpoint = state.isShareMode
+      ? `/api/alliances?share_token=${encodeURIComponent(state.shareToken)}`
+      : '/api/alliances';
+    const res = await fetch(endpoint);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || '同盟一覧の取得に失敗しました');
+      throw new Error(err.error || '同盟情報の取得に失敗しました');
     }
     state.alliances = await res.json();
     renderAllianceUI();
   }
 
   function renderAllianceUI() {
+    const current = getCurrentAlliance();
+    if (adminCurrentAllianceName) {
+      adminCurrentAllianceName.textContent = current ? current.name : '';
+    }
+
+    if (state.isShareMode) {
+      if (current) applyShareModeUI(current.name);
+      return;
+    }
+
     // 上部プルダウン
     allianceSelect.innerHTML = '';
     state.alliances.forEach((al) => {
@@ -411,11 +452,6 @@
       if (al.id === state.currentAllianceId) opt.selected = true;
       allianceSelect.appendChild(opt);
     });
-
-    const current = getCurrentAlliance();
-    if (adminCurrentAllianceName) {
-      adminCurrentAllianceName.textContent = current ? current.name : '';
-    }
 
     // コピー元プルダウン
     copyFromAllianceSelect.innerHTML = '';
@@ -457,7 +493,9 @@
 
       const idText = document.createElement('div');
       idText.className = 'alliance-manage-id';
-      idText.textContent = `URLパラメータ: ?alliance=${al.id}`;
+      idText.textContent = al.share_token
+        ? `共有URL: ?share=${al.share_token}`
+        : `ID: ${al.id}`;
 
       meta.appendChild(nameRow);
       meta.appendChild(idText);
@@ -477,18 +515,56 @@
         actions.appendChild(openBtn);
       }
 
-      const urlBtn = document.createElement('button');
-      urlBtn.type = 'button';
-      urlBtn.className = 'btn btn-ghost btn-sm';
-      urlBtn.textContent = 'URLコピー';
-      urlBtn.addEventListener('click', async () => {
-        const ok = await copyToClipboard(getAllianceShareUrl(al.id));
-        if (ok) showToast(`「${al.name}」の専用URLをコピーしました`);
+      const shareUrlBtn = document.createElement('button');
+      shareUrlBtn.type = 'button';
+      shareUrlBtn.className = 'btn btn-secondary btn-sm';
+      shareUrlBtn.textContent = '🔒 共有URLコピー';
+      shareUrlBtn.addEventListener('click', async () => {
+        const url = getExternalShareUrl(al);
+        if (!url) {
+          alert('共有トークンがありません。URL再発行を実行してください。');
+          return;
+        }
+        const ok = await copyToClipboard(url);
+        if (ok) showToast(`「${al.name}」の外部共有URLをコピーしました`);
+      });
+
+      const regenBtn = document.createElement('button');
+      regenBtn.type = 'button';
+      regenBtn.className = 'btn btn-ghost btn-sm';
+      regenBtn.textContent = 'URL再発行';
+      regenBtn.title = '古い共有URLを無効化し、新しいURLを発行します';
+      regenBtn.addEventListener('click', async () => {
+        if (
+          !confirm(
+            `「${al.name}」の外部共有URLを再発行しますか？\nこれまで配布した古い共有URLは使えなくなります。`
+          )
+        ) {
+          return;
+        }
+        try {
+          const res = await fetch(`/api/alliances/${encodeURIComponent(al.id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ regenerate_token: true })
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || '再発行に失敗しました');
+          }
+          const updated = await res.json();
+          await fetchAlliances();
+          const newUrl = `${window.location.origin}/?share=${encodeURIComponent(updated.share_token)}`;
+          await copyToClipboard(newUrl);
+          showToast('新しい共有URLを発行＆コピーしました');
+        } catch (err) {
+          alert(err.message);
+        }
       });
 
       const renameBtn = document.createElement('button');
       renameBtn.type = 'button';
-      renameBtn.className = 'btn btn-secondary btn-sm';
+      renameBtn.className = 'btn btn-ghost btn-sm';
       renameBtn.textContent = '名前変更';
       renameBtn.addEventListener('click', async () => {
         const nextName = prompt('新しい同盟名を入力してください', al.name);
@@ -510,7 +586,8 @@
         }
       });
 
-      actions.appendChild(urlBtn);
+      actions.appendChild(shareUrlBtn);
+      actions.appendChild(regenBtn);
       actions.appendChild(renameBtn);
 
       if (state.alliances.length > 1) {
@@ -572,6 +649,7 @@
   }
 
   function openAllianceModal() {
+    if (state.isShareMode) return;
     newAllianceNameInput.value = '';
     newAllianceSlugInput.value = '';
     renderAllianceUI();
@@ -971,17 +1049,21 @@
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
 
-  // 同盟切り替え・箱管理
   allianceSelect.addEventListener('change', async () => {
     await switchAlliance(allianceSelect.value);
   });
 
-  copyAllianceUrlBtn.addEventListener('click', async () => {
+  copyShareUrlBtn.addEventListener('click', async () => {
     const current = getCurrentAlliance();
     if (!current) return;
-    const ok = await copyToClipboard(getAllianceShareUrl(current.id));
+    const url = getExternalShareUrl(current);
+    if (!url) {
+      alert('共有トークンが未設定です。「箱を管理」からURL再発行を行ってください。');
+      return;
+    }
+    const ok = await copyToClipboard(url);
     if (ok) {
-      showToast(`「${current.name}」の専用URLをコピーしました`);
+      showToast(`「${current.name}」の外部共有URLをコピーしました`);
     }
   });
 
@@ -1323,11 +1405,28 @@
     setupDragSort(adminEventList, '.admin-item', saveEventOrder);
     setupPWA();
 
+    const params = new URLSearchParams(window.location.search);
+    const shareParam = (params.get('share') || '').trim();
+
+    if (shareParam) {
+      state.isShareMode = true;
+      state.shareToken = shareParam;
+    }
+
     try {
       await fetchAlliances();
 
-      // URLの ?alliance=xxx ＞ 前回開いた箱 ＞ 先頭の箱 の優先順で決定
-      const urlParam = new URLSearchParams(window.location.search).get('alliance');
+      if (state.isShareMode) {
+        const target = state.alliances[0];
+        if (!target) {
+          showShareAccessError('無効な共有URLです。管理者に最新のURLを確認してください。');
+          return;
+        }
+        await switchAlliance(target.id, { silent: true });
+        return;
+      }
+
+      const urlParam = params.get('alliance');
       let savedId = null;
       try {
         savedId = localStorage.getItem(LAST_ALLIANCE_KEY);
@@ -1343,8 +1442,12 @@
 
       await switchAlliance(targetId, { silent: true });
     } catch (err) {
-      eventSelectList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
-      adminEventList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
+      if (state.isShareMode) {
+        showShareAccessError(err.message);
+      } else {
+        eventSelectList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
+        adminEventList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
+      }
     }
   }
 
