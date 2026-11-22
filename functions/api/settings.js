@@ -5,15 +5,20 @@ function jsonResponse(data, status = 200) {
   });
 }
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ request, env }) {
   if (!env.DB) {
     return jsonResponse({ error: 'D1バインディング(DB)が設定されていません' }, 500);
   }
   try {
+    const url = new URL(request.url);
+    const allianceId = (url.searchParams.get('alliance_id') || 'default').trim();
     const row = await env.DB.prepare(
-      "SELECT value FROM app_settings WHERE key = 'default_free_text'"
-    ).first();
-    return jsonResponse({ default_free_text: row?.value ?? '' });
+      'SELECT default_free_text FROM alliances WHERE id = ?'
+    )
+      .bind(allianceId)
+      .first();
+
+    return jsonResponse({ default_free_text: row?.default_free_text ?? '' });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
   }
@@ -25,14 +30,15 @@ export async function onRequestPut({ request, env }) {
   }
   try {
     const body = await request.json();
+    const allianceId = String(body.alliance_id || 'default').trim() || 'default';
     const value = String(body.default_free_text ?? '');
+
     await env.DB.prepare(
-      `INSERT INTO app_settings (key, value, updated_at)
-       VALUES ('default_free_text', ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      "UPDATE alliances SET default_free_text = ?, updated_at = datetime('now') WHERE id = ?"
     )
-      .bind(value)
+      .bind(value, allianceId)
       .run();
+
     return jsonResponse({ ok: true });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
