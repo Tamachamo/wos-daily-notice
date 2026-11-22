@@ -1,9 +1,13 @@
 (() => {
+  const LAST_ALLIANCE_KEY = 'wos_last_alliance_id';
+
   const state = {
+    alliances: [],
+    currentAllianceId: 'default',
     events: [],
-    tempEvents: [], // 「今回限り」で追加された単発イベント
+    tempEvents: [],
     tempIdCounter: 1,
-    selections: {}, // { [eventKey]: { checked: boolean, choiceIndex: number, text: string } }
+    selections: {},
     lastGeneratedText: ''
   };
 
@@ -14,6 +18,22 @@
     admin: document.getElementById('view-admin')
   };
   const tabBtns = document.querySelectorAll('.tab-btn[data-view]');
+
+  // 同盟（箱）関連
+  const allianceSelect = document.getElementById('allianceSelect');
+  const copyAllianceUrlBtn = document.getElementById('copyAllianceUrlBtn');
+  const openAllianceModalBtn = document.getElementById('openAllianceModalBtn');
+  const allianceModal = document.getElementById('allianceModal');
+  const closeAllianceModalBtn = document.getElementById('closeAllianceModalBtn');
+  const createAllianceForm = document.getElementById('createAllianceForm');
+  const newAllianceNameInput = document.getElementById('newAllianceName');
+  const newAllianceSlugInput = document.getElementById('newAllianceSlug');
+  const copyFromAllianceSelect = document.getElementById('copyFromAllianceSelect');
+  const createAllianceSubmitBtn = document.getElementById('createAllianceSubmitBtn');
+  const allianceManageList = document.getElementById('allianceManageList');
+  const adminCurrentAllianceName = document.getElementById('adminCurrentAllianceName');
+
+  // 通知作成画面
   const noticeDateInput = document.getElementById('noticeDate');
   const datePreview = document.getElementById('datePreview');
   const todayScheduleInput = document.getElementById('todaySchedule');
@@ -23,7 +43,7 @@
   const uncheckAllBtn = document.getElementById('uncheckAllBtn');
   const saveFreeTextDefaultBtn = document.getElementById('saveFreeTextDefaultBtn');
 
-  // クイック追加モーダル関連
+  // クイック追加モーダル
   const openQuickAddBtn = document.getElementById('openQuickAddBtn');
   const openQuickAddBottomBtn = document.getElementById('openQuickAddBottomBtn');
   const quickAddModal = document.getElementById('quickAddModal');
@@ -125,6 +145,29 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function getAllianceShareUrl(allianceId) {
+    return `${window.location.origin}/?alliance=${encodeURIComponent(allianceId)}`;
+  }
+
+  function getCurrentAlliance() {
+    return state.alliances.find((a) => a.id === state.currentAllianceId) || state.alliances[0] || null;
+  }
+
+  function syncUrlWithAlliance(allianceId) {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('alliance', allianceId);
+      window.history.replaceState({}, '', url.toString());
+    } catch {
+      // 無視
+    }
+    try {
+      localStorage.setItem(LAST_ALLIANCE_KEY, allianceId);
+    } catch {
+      // 無視
+    }
+  }
+
   function createDragHandle() {
     const handle = document.createElement('span');
     handle.className = 'drag-handle';
@@ -176,7 +219,7 @@
       .filter((c) => c.label || c.text);
   }
 
-  // ===== ドラッグ並び替え（PCマウス・スマホタッチ両対応） =====
+  // ===== ドラッグ並び替え =====
   function setupDragSort(container, itemSelector, onReorder) {
     let dragItem = null;
     let placeholder = null;
@@ -197,7 +240,6 @@
 
       dragItem.style.top = `${e.clientY - offsetY}px`;
 
-      // 画面端付近のオートスクロール
       const edge = 72;
       if (e.clientY < edge) {
         window.scrollBy(0, -10);
@@ -240,7 +282,7 @@
         try {
           activeHandle.releasePointerCapture(activePointerId);
         } catch {
-          // 既に解放済みの場合は無視
+          // 無視
         }
       }
 
@@ -310,7 +352,7 @@
       try {
         handle.setPointerCapture(e.pointerId);
       } catch {
-        // 未対応環境フォールバック
+        // 無視
       }
 
       handle.addEventListener('pointermove', onPointerMove);
@@ -320,7 +362,6 @@
   }
 
   async function saveEventOrder(orderedIds) {
-    // 画面上の状態を即座に新順序へ更新
     const eventMap = new Map(state.events.map((ev) => [ev.id, ev]));
     state.events = orderedIds
       .map((id, idx) => {
@@ -345,13 +386,208 @@
       showToast('並び順を保存しました');
     } catch (err) {
       alert(err.message);
-      await fetchEvents(); // 失敗時はDBの順序に復元
+      await fetchEvents();
     }
   }
 
-  // ===== API 通信 =====
+  // ===== 同盟（箱）管理 =====
+  async function fetchAlliances() {
+    const res = await fetch('/api/alliances');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || '同盟一覧の取得に失敗しました');
+    }
+    state.alliances = await res.json();
+    renderAllianceUI();
+  }
+
+  function renderAllianceUI() {
+    // 上部プルダウン
+    allianceSelect.innerHTML = '';
+    state.alliances.forEach((al) => {
+      const opt = document.createElement('option');
+      opt.value = al.id;
+      opt.textContent = al.name;
+      if (al.id === state.currentAllianceId) opt.selected = true;
+      allianceSelect.appendChild(opt);
+    });
+
+    const current = getCurrentAlliance();
+    if (adminCurrentAllianceName) {
+      adminCurrentAllianceName.textContent = current ? current.name : '';
+    }
+
+    // コピー元プルダウン
+    copyFromAllianceSelect.innerHTML = '';
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = '空の状態から作成';
+    copyFromAllianceSelect.appendChild(emptyOpt);
+
+    state.alliances.forEach((al) => {
+      const opt = document.createElement('option');
+      opt.value = al.id;
+      opt.textContent = `「${al.name}」のイベントをコピー`;
+      if (al.id === state.currentAllianceId) opt.selected = true;
+      copyFromAllianceSelect.appendChild(opt);
+    });
+
+    // 同盟一覧（モーダル内）
+    allianceManageList.innerHTML = '';
+    state.alliances.forEach((al) => {
+      const isCurrent = al.id === state.currentAllianceId;
+      const item = document.createElement('div');
+      item.className = 'alliance-manage-item' + (isCurrent ? ' current' : '');
+
+      const meta = document.createElement('div');
+      meta.className = 'alliance-manage-meta';
+
+      const nameRow = document.createElement('div');
+      nameRow.className = 'alliance-manage-name';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = al.name;
+      nameRow.appendChild(nameSpan);
+
+      if (isCurrent) {
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = '選択中';
+        nameRow.appendChild(badge);
+      }
+
+      const idText = document.createElement('div');
+      idText.className = 'alliance-manage-id';
+      idText.textContent = `URLパラメータ: ?alliance=${al.id}`;
+
+      meta.appendChild(nameRow);
+      meta.appendChild(idText);
+
+      const actions = document.createElement('div');
+      actions.className = 'alliance-manage-actions';
+
+      if (!isCurrent) {
+        const openBtn = document.createElement('button');
+        openBtn.type = 'button';
+        openBtn.className = 'btn btn-primary btn-sm';
+        openBtn.textContent = '開く';
+        openBtn.addEventListener('click', async () => {
+          closeAllianceModal();
+          await switchAlliance(al.id);
+        });
+        actions.appendChild(openBtn);
+      }
+
+      const urlBtn = document.createElement('button');
+      urlBtn.type = 'button';
+      urlBtn.className = 'btn btn-ghost btn-sm';
+      urlBtn.textContent = 'URLコピー';
+      urlBtn.addEventListener('click', async () => {
+        const ok = await copyToClipboard(getAllianceShareUrl(al.id));
+        if (ok) showToast(`「${al.name}」の専用URLをコピーしました`);
+      });
+
+      const renameBtn = document.createElement('button');
+      renameBtn.type = 'button';
+      renameBtn.className = 'btn btn-secondary btn-sm';
+      renameBtn.textContent = '名前変更';
+      renameBtn.addEventListener('click', async () => {
+        const nextName = prompt('新しい同盟名を入力してください', al.name);
+        if (!nextName || !nextName.trim() || nextName.trim() === al.name) return;
+        try {
+          const res = await fetch(`/api/alliances/${encodeURIComponent(al.id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: nextName.trim() })
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || '名前変更に失敗しました');
+          }
+          await fetchAlliances();
+          showToast('同盟名を変更しました');
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+
+      actions.appendChild(urlBtn);
+      actions.appendChild(renameBtn);
+
+      if (state.alliances.length > 1) {
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'btn btn-danger btn-sm';
+        delBtn.textContent = '削除';
+        delBtn.addEventListener('click', async () => {
+          if (
+            !confirm(
+              `「${al.name}」の箱を削除しますか？\nこの同盟に登録されているイベントや自由記述欄もすべて消えます。`
+            )
+          ) {
+            return;
+          }
+          try {
+            const res = await fetch(`/api/alliances/${encodeURIComponent(al.id)}`, {
+              method: 'DELETE'
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || '削除に失敗しました');
+            }
+            await fetchAlliances();
+            if (state.currentAllianceId === al.id && state.alliances[0]) {
+              await switchAlliance(state.alliances[0].id);
+            }
+            showToast(`「${al.name}」を削除しました`);
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+        actions.appendChild(delBtn);
+      }
+
+      item.appendChild(meta);
+      item.appendChild(actions);
+      allianceManageList.appendChild(item);
+    });
+  }
+
+  async function switchAlliance(allianceId, { silent = false } = {}) {
+    state.currentAllianceId = allianceId;
+    state.selections = {};
+    state.tempEvents = [];
+    syncUrlWithAlliance(allianceId);
+    resetAdminForm();
+    renderAllianceUI();
+
+    eventSelectList.innerHTML = '<p class="loading-text">読み込み中...</p>';
+    adminEventList.innerHTML = '<p class="loading-text">読み込み中...</p>';
+
+    await Promise.all([fetchEvents(), fetchSettings()]);
+
+    if (!silent) {
+      const current = getCurrentAlliance();
+      if (current) showToast(`「${current.name}」に切り替えました`);
+    }
+  }
+
+  function openAllianceModal() {
+    newAllianceNameInput.value = '';
+    newAllianceSlugInput.value = '';
+    renderAllianceUI();
+    allianceModal.classList.remove('hidden');
+    setTimeout(() => newAllianceNameInput.focus(), 50);
+  }
+
+  function closeAllianceModal() {
+    allianceModal.classList.add('hidden');
+  }
+
+  // ===== イベント・設定 API 通信 =====
   async function fetchEvents() {
-    const res = await fetch('/api/events');
+    const res = await fetch(
+      `/api/events?alliance_id=${encodeURIComponent(state.currentAllianceId)}`
+    );
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'イベント一覧の取得に失敗しました');
@@ -379,14 +615,14 @@
 
   async function fetchSettings() {
     try {
-      const res = await fetch('/api/settings');
+      const res = await fetch(
+        `/api/settings?alliance_id=${encodeURIComponent(state.currentAllianceId)}`
+      );
       if (!res.ok) return;
       const data = await res.json();
-      if (typeof data.default_free_text === 'string') {
-        freeTextInput.value = data.default_free_text;
-      }
+      freeTextInput.value = typeof data.default_free_text === 'string' ? data.default_free_text : '';
     } catch {
-      // 読み込み失敗時は空欄のまま利用可能
+      freeTextInput.value = '';
     }
   }
 
@@ -509,7 +745,7 @@
     const allEmpty = state.events.length === 0 && state.tempEvents.length === 0;
     if (allEmpty) {
       eventSelectList.innerHTML =
-        '<p class="loading-text">登録されたイベントがありません。「＋ イベント追加」から作成してください。</p>';
+        '<p class="loading-text">この同盟にはまだイベントがありません。「＋ イベント追加」から作成してください。</p>';
       return;
     }
 
@@ -648,7 +884,7 @@
   function renderAdminList() {
     adminEventList.innerHTML = '';
     if (state.events.length === 0) {
-      adminEventList.innerHTML = '<p class="loading-text">まだイベントが登録されていません。</p>';
+      adminEventList.innerHTML = '<p class="loading-text">この同盟にはまだイベントが登録されていません。</p>';
       return;
     }
 
@@ -735,6 +971,62 @@
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
 
+  // 同盟切り替え・箱管理
+  allianceSelect.addEventListener('change', async () => {
+    await switchAlliance(allianceSelect.value);
+  });
+
+  copyAllianceUrlBtn.addEventListener('click', async () => {
+    const current = getCurrentAlliance();
+    if (!current) return;
+    const ok = await copyToClipboard(getAllianceShareUrl(current.id));
+    if (ok) {
+      showToast(`「${current.name}」の専用URLをコピーしました`);
+    }
+  });
+
+  openAllianceModalBtn.addEventListener('click', openAllianceModal);
+  closeAllianceModalBtn.addEventListener('click', closeAllianceModal);
+  allianceModal.addEventListener('click', (e) => {
+    if (e.target === allianceModal) closeAllianceModal();
+  });
+
+  createAllianceForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = newAllianceNameInput.value.trim();
+    if (!name) return;
+
+    createAllianceSubmitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/alliances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          id: newAllianceSlugInput.value.trim(),
+          copy_from_id: copyFromAllianceSelect.value
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '同盟の作成に失敗しました');
+      }
+      const created = await res.json();
+      await fetchAlliances();
+      closeAllianceModal();
+      await switchAlliance(created.id, { silent: true });
+      showToast(
+        created.copied_events_count > 0
+          ? `「${created.name}」を作成しました（イベント${created.copied_events_count}件コピー）`
+          : `「${created.name}」を作成しました`
+      );
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      createAllianceSubmitBtn.disabled = false;
+    }
+  });
+
   noticeDateInput.addEventListener('change', () => {
     datePreview.textContent = formatJapaneseDate(noticeDateInput.value);
   });
@@ -751,16 +1043,20 @@
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ default_free_text: freeTextInput.value })
+        body: JSON.stringify({
+          alliance_id: state.currentAllianceId,
+          default_free_text: freeTextInput.value
+        })
       });
       if (!res.ok) throw new Error('保存に失敗しました');
-      showToast('自由記述欄の初期値をDBに保存しました');
+      const current = getCurrentAlliance();
+      showToast(`「${current?.name || '現在'}」の自由記述欄を保存しました`);
     } catch (err) {
       alert(err.message);
     }
   });
 
-  // クイック追加モーダル操作
+  // クイック追加モーダル
   openQuickAddBtn.addEventListener('click', openQuickAddModal);
   openQuickAddBottomBtn.addEventListener('click', openQuickAddModal);
   closeQuickAddBtn.addEventListener('click', closeQuickAddModal);
@@ -771,8 +1067,9 @@
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !quickAddModal.classList.contains('hidden')) {
-      closeQuickAddModal();
+    if (e.key === 'Escape') {
+      if (!quickAddModal.classList.contains('hidden')) closeQuickAddModal();
+      if (!allianceModal.classList.contains('hidden')) closeAllianceModal();
     }
   });
 
@@ -825,6 +1122,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          alliance_id: state.currentAllianceId,
           title,
           content_type: contentType,
           template_text: templateText,
@@ -917,6 +1215,7 @@
     const choices = contentType === 'choices' ? collectChoicesFrom(choiceRowsContainer) : [];
 
     const payload = {
+      alliance_id: state.currentAllianceId,
       title: masterTitleInput.value.trim(),
       content_type: contentType,
       template_text: contentType === 'template' ? masterTemplateTextInput.value : '',
@@ -956,7 +1255,7 @@
     }
   });
 
-  // ===== PWA（Service Worker登録 & インストールボタン） =====
+  // ===== PWA =====
   const installAppBtn = document.getElementById('installAppBtn');
   let deferredInstallPrompt = null;
 
@@ -1020,13 +1319,29 @@
     noticeDateInput.value = getTodayLocalISO();
     datePreview.textContent = formatJapaneseDate(noticeDateInput.value);
 
-    // 作成画面・管理画面の両方でドラッグ並び替えを有効化
     setupDragSort(eventSelectList, '.event-row', saveEventOrder);
     setupDragSort(adminEventList, '.admin-item', saveEventOrder);
     setupPWA();
 
     try {
-      await Promise.all([fetchEvents(), fetchSettings()]);
+      await fetchAlliances();
+
+      // URLの ?alliance=xxx ＞ 前回開いた箱 ＞ 先頭の箱 の優先順で決定
+      const urlParam = new URLSearchParams(window.location.search).get('alliance');
+      let savedId = null;
+      try {
+        savedId = localStorage.getItem(LAST_ALLIANCE_KEY);
+      } catch {
+        // 無視
+      }
+
+      const targetId =
+        state.alliances.find((a) => a.id === urlParam)?.id ||
+        state.alliances.find((a) => a.id === savedId)?.id ||
+        state.alliances[0]?.id ||
+        'default';
+
+      await switchAlliance(targetId, { silent: true });
     } catch (err) {
       eventSelectList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
       adminEventList.innerHTML = `<p class="loading-text">エラー: ${err.message}</p>`;
