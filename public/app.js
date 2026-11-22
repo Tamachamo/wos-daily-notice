@@ -819,7 +819,7 @@
     });
 
     if (eventItems.length > 0) {
-      blocks.push(`●今日イベント\n${eventItems.join('\n\n')}`);
+      blocks.push(`●イベント\n${eventItems.join('\n\n')}`);
     }
 
     const freeText = freeTextInput.value.replace(/^\s*\n+|\n+\s*$/g, '');
