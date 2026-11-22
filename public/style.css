@@ -834,3 +834,16 @@ body.is-dragging {
   gap: 6px;
   flex-shrink: 0;
 }
+
+/* 外部共有モード時の同盟名固定バッジ */
+.locked-alliance-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
