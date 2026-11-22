@@ -30,10 +30,11 @@
         <div class="alliance-select-wrap">
           <label for="allianceSelect" class="alliance-label">📦 同盟</label>
           <select id="allianceSelect" class="select alliance-select" aria-label="同盟を切り替え"></select>
+          <span id="lockedAllianceName" class="locked-alliance-badge hidden"></span>
         </div>
-        <div class="alliance-bar-actions">
-          <button type="button" id="copyAllianceUrlBtn" class="btn btn-ghost btn-sm" title="この同盟を直接開けるURLをコピー">
-            🔗 専用URL
+        <div id="allianceBarActions" class="alliance-bar-actions">
+          <button type="button" id="copyShareUrlBtn" class="btn btn-primary btn-sm" title="この同盟だけ表示される外部共有URLをコピー">
+            🔒 外部共有URL
           </button>
           <button type="button" id="openAllianceModalBtn" class="btn btn-secondary btn-sm">
             ＋ 箱を管理
