@@ -23,6 +23,24 @@
         <button type="button" id="installAppBtn" class="tab-btn install-btn hidden">📲 アプリ化</button>
       </nav>
     </div>
+
+    <!-- 同盟（箱）切り替えバー -->
+    <div class="alliance-bar">
+      <div class="alliance-bar-inner">
+        <div class="alliance-select-wrap">
+          <label for="allianceSelect" class="alliance-label">📦 同盟</label>
+          <select id="allianceSelect" class="select alliance-select" aria-label="同盟を切り替え"></select>
+        </div>
+        <div class="alliance-bar-actions">
+          <button type="button" id="copyAllianceUrlBtn" class="btn btn-ghost btn-sm" title="この同盟を直接開けるURLをコピー">
+            🔗 専用URL
+          </button>
+          <button type="button" id="openAllianceModalBtn" class="btn btn-secondary btn-sm">
+            ＋ 箱を管理
+          </button>
+        </div>
+      </div>
+    </div>
   </header>
 
   <main class="container">
@@ -55,7 +73,7 @@
             <button type="button" id="uncheckAllBtn" class="btn btn-ghost btn-sm">選択を全解除</button>
           </div>
         </div>
-        <p class="hint">チェックを入れたイベントが通知に反映されます。定型文はその場で自由に編集でき、空欄ならタイトルのみ出力されます。</p>
+        <p class="hint">チェックを入れたイベントが通知に反映されます。左端の「⋮⋮」で並び替えできます。</p>
         <div id="eventSelectList" class="event-select-list">
           <p class="loading-text">読み込み中...</p>
         </div>
@@ -70,10 +88,10 @@
         <div class="section-header-row">
           <h2 class="section-title">4. 自由記述欄</h2>
           <button type="button" id="saveFreeTextDefaultBtn" class="btn btn-secondary btn-sm">
-            💾 全員共通の初期値として保存
+            💾 この同盟の初期値として保存
           </button>
         </div>
-        <p class="hint">今週の予定や連絡事項などを記入できます。</p>
+        <p class="hint">今週の予定や連絡事項などを記入できます（現在選択中の同盟ごとに保存されます）。</p>
         <textarea
           id="freeText"
           class="textarea"
@@ -125,6 +143,7 @@
             キャンセル
           </button>
         </div>
+        <p class="hint">現在編集中の同盟：<strong id="adminCurrentAllianceName"></strong></p>
 
         <form id="eventForm" class="admin-form">
           <input type="hidden" id="editEventId" />
@@ -191,6 +210,7 @@
 
       <div class="card">
         <h2 class="section-title">登録済みイベント一覧</h2>
+        <p class="hint">左端の「⋮⋮」をドラッグして並び替えできます（自動で保存されます）</p>
         <div id="adminEventList" class="admin-event-list">
           <p class="loading-text">読み込み中...</p>
         </div>
@@ -255,7 +275,7 @@
         <label class="save-master-toggle">
           <input type="checkbox" id="quickSaveToMaster" checked />
           <div>
-            <strong>マスタにも保存する（次回以降も全員に表示）</strong>
+            <strong>この同盟のマスタにも保存する（次回以降も表示）</strong>
             <span class="toggle-sub">チェックを外すと、今回限りの単発イベントとして追加されます</span>
           </div>
         </label>
@@ -265,6 +285,55 @@
           <button type="submit" id="submitQuickAddBtn" class="btn btn-primary">追加してチェックを入れる</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ========== 同盟（箱）管理モーダル ========== -->
+  <div id="allianceModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="allianceModalTitle">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2 id="allianceModalTitle" class="section-title">📦 同盟（箱）の管理</h2>
+        <button type="button" id="closeAllianceModalBtn" class="btn btn-ghost btn-sm" aria-label="閉じる">✕</button>
+      </div>
+
+      <form id="createAllianceForm" class="admin-form alliance-create-box">
+        <div class="form-group">
+          <label for="newAllianceName" class="label">新しい同盟名 <span class="req">*</span></label>
+          <input
+            type="text"
+            id="newAllianceName"
+            class="input"
+            required
+            placeholder="例：HOT同盟 / COO同盟"
+          />
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="newAllianceSlug" class="label">URL用ID（任意・半角英数字）</label>
+            <input
+              type="text"
+              id="newAllianceSlug"
+              class="input"
+              placeholder="空欄で自動生成（例：hot）"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="copyFromAllianceSelect" class="label">イベントの初期コピー元</label>
+            <select id="copyFromAllianceSelect" class="select"></select>
+          </div>
+        </div>
+
+        <button type="submit" id="createAllianceSubmitBtn" class="btn btn-primary">
+          ＋ 新しい同盟の箱を作成
+        </button>
+      </form>
+
+      <div class="alliance-list-section">
+        <h3 class="sub-section-title">作成済みの同盟一覧</h3>
+        <div id="allianceManageList" class="alliance-manage-list"></div>
+      </div>
     </div>
   </div>
 
