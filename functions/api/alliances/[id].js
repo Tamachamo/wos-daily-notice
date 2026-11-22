@@ -5,6 +5,10 @@ function jsonResponse(data, status = 200) {
   });
 }
 
+function generateShareToken() {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+}
+
 export async function onRequestPut({ params, request, env }) {
   if (!env.DB) {
     return jsonResponse({ error: 'D1バインディング(DB)が設定されていません' }, 500);
@@ -16,6 +20,19 @@ export async function onRequestPut({ params, request, env }) {
 
   try {
     const body = await request.json();
+
+    // 外部共有URL（トークン）の再発行
+    if (body.regenerate_token) {
+      const nextToken = generateShareToken();
+      await env.DB.prepare(
+        "UPDATE alliances SET share_token = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+        .bind(nextToken, id)
+        .run();
+      return jsonResponse({ ok: true, id, share_token: nextToken });
+    }
+
+    // 同盟名の変更
     const name = String(body.name || '').trim();
     if (!name) {
       return jsonResponse({ error: '同盟名は必須です' }, 400);
