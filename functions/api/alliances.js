@@ -1,3 +1,5 @@
+const DEFAULT_SECTION_ORDER_JSON = '["free_top","schedule","events","free_bottom"]';
+
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -29,7 +31,6 @@ export async function onRequestGet({ request, env }) {
     const url = new URL(request.url);
     const shareToken = (url.searchParams.get('share_token') || '').trim();
 
-    // 外部共有URLからのアクセス：該当する1同盟のみ返す（他同盟は一切返さない）
     if (shareToken) {
       const row = await env.DB.prepare(
         'SELECT id, name, default_free_text, sort_order FROM alliances WHERE share_token = ?'
@@ -43,7 +44,6 @@ export async function onRequestGet({ request, env }) {
       return jsonResponse([row]);
     }
 
-    // 通常アクセス：全同盟一覧を返す
     let { results } = await env.DB.prepare(
       'SELECT id, name, default_free_text, sort_order, share_token FROM alliances ORDER BY sort_order ASC, created_at ASC'
     ).all();
@@ -93,17 +93,21 @@ export async function onRequestPost({ request, env }) {
     const shareToken = generateShareToken();
 
     const copyFromId = String(body.copy_from_id || '').trim();
+    let initialTopFreeText = '';
     let initialFreeText = '';
+    let initialSectionOrderJson = DEFAULT_SECTION_ORDER_JSON;
     let sourceEvents = [];
 
     if (copyFromId) {
       const srcAlliance = await env.DB.prepare(
-        'SELECT default_free_text FROM alliances WHERE id = ?'
+        'SELECT default_top_free_text, default_free_text, section_order_json FROM alliances WHERE id = ?'
       )
         .bind(copyFromId)
         .first();
       if (srcAlliance) {
+        initialTopFreeText = srcAlliance.default_top_free_text || '';
         initialFreeText = srcAlliance.default_free_text || '';
+        initialSectionOrderJson = srcAlliance.section_order_json || DEFAULT_SECTION_ORDER_JSON;
       }
 
       const srcEventsRes = await env.DB.prepare(
@@ -116,8 +120,16 @@ export async function onRequestPost({ request, env }) {
 
     const statements = [
       env.DB.prepare(
-        'INSERT INTO alliances (id, name, default_free_text, sort_order, share_token) VALUES (?, ?, ?, ?, ?)'
-      ).bind(id, name, initialFreeText, sortOrder, shareToken)
+        'INSERT INTO alliances (id, name, default_top_free_text, default_free_text, section_order_json, sort_order, share_token) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        id,
+        name,
+        initialTopFreeText,
+        initialFreeText,
+        initialSectionOrderJson,
+        sortOrder,
+        shareToken
+      )
     ];
 
     for (const ev of sourceEvents) {
@@ -134,6 +146,7 @@ export async function onRequestPost({ request, env }) {
       {
         id,
         name,
+        default_top_free_text: initialTopFreeText,
         default_free_text: initialFreeText,
         sort_order: sortOrder,
         share_token: shareToken,
