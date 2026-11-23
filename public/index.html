@@ -49,6 +49,7 @@
       <h2 class="section-title">アクセスできません</h2>
       <p id="shareErrorMessage" class="hint"></p>
     </div>
+
     <!-- ========== 1. 通知作成画面 ========== -->
     <section id="view-create" class="view active">
       <div class="card">
@@ -59,50 +60,137 @@
         </div>
       </div>
 
-      <div class="card">
-        <h2 class="section-title">2. 今日の予定</h2>
-        <p class="hint">1行につき1件入力してください（行頭に「・」がない場合は自動で付与されます）</p>
-        <textarea
-          id="todaySchedule"
-          class="textarea"
-          rows="4"
-          placeholder="18時 7号砦&#10;22時 2号要塞・1号砦&#10;23時 6号砦"
-        ></textarea>
-      </div>
+      <p class="section-sort-hint">
+        ↕ 下の4項目は左上の「⋮⋮」ドラッグ、または「↑↓」ボタンで出力順ごと並び替えできます（同盟ごとに自動保存）
+      </p>
 
-      <div class="card">
-        <div class="section-header-row">
-          <h2 class="section-title">3. イベント選択</h2>
-          <div class="header-btn-group">
-            <button type="button" id="openQuickAddBtn" class="btn btn-primary btn-sm">＋ イベント追加</button>
-            <button type="button" id="uncheckAllBtn" class="btn btn-ghost btn-sm">選択を全解除</button>
+      <!-- 並び替え可能な4つの大項目 -->
+      <div id="sortableSections" class="sortable-sections">
+        <!-- 自由記述（上） -->
+        <div class="card section-card" data-section-key="free_top">
+          <div class="section-header-row">
+            <div class="section-title-group">
+              <span class="section-drag-handle" title="ドラッグして項目を並び替え" aria-label="ドラッグして項目を並び替え">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <circle cx="5.5" cy="3" r="1.4"/><circle cx="10.5" cy="3" r="1.4"/>
+                  <circle cx="5.5" cy="8" r="1.4"/><circle cx="10.5" cy="8" r="1.4"/>
+                  <circle cx="5.5" cy="13" r="1.4"/><circle cx="10.5" cy="13" r="1.4"/>
+                </svg>
+              </span>
+              <h2 class="section-title"><span class="section-num">2.</span> 自由記述欄（上）</h2>
+            </div>
+            <div class="header-btn-group">
+              <button type="button" id="saveTopFreeTextDefaultBtn" class="btn btn-secondary btn-sm">
+                💾 初期値として保存
+              </button>
+              <div class="section-order-controls">
+                <button type="button" class="btn btn-ghost btn-icon section-move-btn" data-dir="-1" title="上へ移動" aria-label="上へ移動">↑</button>
+                <button type="button" class="btn btn-ghost btn-icon section-move-btn" data-dir="1" title="下へ移動" aria-label="下へ移動">↓</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint">日付のすぐ下に入る挨拶や重要連絡などを入力できます（空欄なら出力されません）。</p>
+          <textarea
+            id="topFreeText"
+            class="textarea"
+            rows="3"
+            placeholder="例：おはようございます！今日もよろしくお願いします！"
+          ></textarea>
+        </div>
+
+        <!-- 今日の予定 -->
+        <div class="card section-card" data-section-key="schedule">
+          <div class="section-header-row">
+            <div class="section-title-group">
+              <span class="section-drag-handle" title="ドラッグして項目を並び替え" aria-label="ドラッグして項目を並び替え">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <circle cx="5.5" cy="3" r="1.4"/><circle cx="10.5" cy="3" r="1.4"/>
+                  <circle cx="5.5" cy="8" r="1.4"/><circle cx="10.5" cy="8" r="1.4"/>
+                  <circle cx="5.5" cy="13" r="1.4"/><circle cx="10.5" cy="13" r="1.4"/>
+                </svg>
+              </span>
+              <h2 class="section-title"><span class="section-num">3.</span> 今日の予定</h2>
+            </div>
+            <div class="header-btn-group">
+              <div class="section-order-controls">
+                <button type="button" class="btn btn-ghost btn-icon section-move-btn" data-dir="-1" title="上へ移動" aria-label="上へ移動">↑</button>
+                <button type="button" class="btn btn-ghost btn-icon section-move-btn" data-dir="1" title="下へ移動" aria-label="下へ移動">↓</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint">1行につき1件入力してください（行頭に「・」がない場合は自動で付与されます）</p>
+          <textarea
+            id="todaySchedule"
+            class="textarea"
+            rows="4"
+            placeholder="18時 7号砦&#10;22時 2号要塞・1号砦&#10;23時 6号砦"
+          ></textarea>
+        </div>
+
+        <!-- イベント -->
+        <div class="card section-card" data-section-key="events">
+          <div class="section-header-row">
+            <div class="section-title-group">
+              <span class="section-drag-handle" title="ドラッグして項目を並び替え" aria-label="ドラッグして項目を並び替え">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <circle cx="5.5" cy="3" r="1.4"/><circle cx="10.5" cy="3" r="1.4"/>
+                  <circle cx="5.5" cy="8" r="1.4"/><circle cx="10.5" cy="8" r="1.4"/>
+                  <circle cx="5.5" cy="13" r="1.4"/><circle cx="10.5" cy="13" r="1.4"/>
+                </svg>
+              </span>
+              <h2 class="section-title"><span class="section-num">4.</span> イベント選択</h2>
+            </div>
+            <div class="header-btn-group">
+              <button type="button" id="openQuickAddBtn" class="btn btn-primary btn-sm">＋ イベント追加</button>
+              <button type="button" id="uncheckAllBtn" class="btn btn-ghost btn-sm">選択を全解除</button>
+              <div class="section-order-controls">
+                <button type="button" class="btn btn-ghost btn-icon section-move-btn" data-dir="-1" title="上へ移動" aria-label="上へ移動">↑</button>
+                <button type="button" class="btn btn-ghost btn-icon section-move-btn" data-dir="1" title="下へ移動" aria-label="下へ移動">↓</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint">チェックを入れたイベントが通知に反映されます。各行の「⋮⋮」でイベント同士の並び替えもできます。</p>
+          <div id="eventSelectList" class="event-select-list">
+            <p class="loading-text">読み込み中...</p>
+          </div>
+          <div class="list-footer-action">
+            <button type="button" id="openQuickAddBottomBtn" class="btn btn-secondary btn-full">
+              ＋ 未登録のイベントをここから追加する
+            </button>
           </div>
         </div>
-        <p class="hint">チェックを入れたイベントが通知に反映されます。左端の「⋮⋮」で並び替えできます。</p>
-        <div id="eventSelectList" class="event-select-list">
-          <p class="loading-text">読み込み中...</p>
-        </div>
-        <div class="list-footer-action">
-          <button type="button" id="openQuickAddBottomBtn" class="btn btn-secondary btn-full">
-            ＋ 未登録のイベントをここから追加する
-          </button>
-        </div>
-      </div>
 
-      <div class="card">
-        <div class="section-header-row">
-          <h2 class="section-title">4. 自由記述欄</h2>
-          <button type="button" id="saveFreeTextDefaultBtn" class="btn btn-secondary btn-sm">
-            💾 この同盟の初期値として保存
-          </button>
+        <!-- 自由記述（下） -->
+        <div class="card section-card" data-section-key="free_bottom">
+          <div class="section-header-row">
+            <div class="section-title-group">
+              <span class="section-drag-handle" title="ドラッグして項目を並び替え" aria-label="ドラッグして項目を並び替え">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <circle cx="5.5" cy="3" r="1.4"/><circle cx="10.5" cy="3" r="1.4"/>
+                  <circle cx="5.5" cy="8" r="1.4"/><circle cx="10.5" cy="8" r="1.4"/>
+                  <circle cx="5.5" cy="13" r="1.4"/><circle cx="10.5" cy="13" r="1.4"/>
+                </svg>
+              </span>
+              <h2 class="section-title"><span class="section-num">5.</span> 自由記述欄（下）</h2>
+            </div>
+            <div class="header-btn-group">
+              <button type="button" id="saveFreeTextDefaultBtn" class="btn btn-secondary btn-sm">
+                💾 初期値として保存
+              </button>
+              <div class="section-order-controls">
+                <button type="button" class="btn btn-ghost btn-icon section-move-btn" data-dir="-1" title="上へ移動" aria-label="上へ移動">↑</button>
+                <button type="button" class="btn btn-ghost btn-icon section-move-btn" data-dir="1" title="下へ移動" aria-label="下へ移動">↓</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint">今週の予定や連絡事項などを記入できます（現在選択中の同盟ごとに保存されます）。</p>
+          <textarea
+            id="freeText"
+            class="textarea"
+            rows="5"
+            placeholder="【今週の予定】&#10;土曜日 国内王城(HOT同盟移籍予定)"
+          ></textarea>
         </div>
-        <p class="hint">今週の予定や連絡事項などを記入できます（現在選択中の同盟ごとに保存されます）。</p>
-        <textarea
-          id="freeText"
-          class="textarea"
-          rows="5"
-          placeholder="【今週の予定】&#10;土曜日 国内王城(HOT同盟移籍予定)"
-        ></textarea>
       </div>
 
       <div class="action-bar">
