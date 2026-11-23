@@ -847,3 +847,75 @@ body.is-dragging {
   font-size: 0.9rem;
   font-weight: 700;
 }
+
+/* ===== 大項目（セクション）の並び替え ===== */
+.section-sort-hint {
+  margin: -4px 4px 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.sortable-sections {
+  display: flex;
+  flex-direction: column;
+}
+
+.section-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.section-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color 0.15s, background 0.15s;
+}
+
+.section-drag-handle:hover,
+.section-drag-handle:active {
+  color: var(--primary);
+  background: rgba(56, 189, 248, 0.14);
+}
+
+.section-drag-handle:active {
+  cursor: grabbing;
+}
+
+.section-order-controls {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  padding: 5px 9px;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.section-card.section-dragging {
+  border-color: var(--primary);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  max-height: 82px;
+  overflow: hidden;
+  opacity: 0.95;
+  margin-bottom: 0;
+  cursor: grabbing;
+}
+
+.section-drag-placeholder {
+  border: 2px dashed var(--primary);
+  background: rgba(56, 189, 248, 0.08);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+}
