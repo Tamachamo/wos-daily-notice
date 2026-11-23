@@ -421,7 +421,6 @@
       initialOrder = getOrder();
 
       const rect = dragCard.getBoundingClientRect();
-      // コンパクト表示したときに掴み位置がズレないよう上端寄りに合わせる
       offsetY = Math.min(e.clientY - rect.top, 36);
 
       placeholder = document.createElement('div');
@@ -1099,8 +1098,7 @@
       const scheduleLines = todayScheduleInput.value
         .split(/\r?\n/)
         .map((line) => line.trim())
-        .filter((line) => line.length > 0)
-        .map((line) => (line.startsWith('・') ? line : `・${line}`));
+        .filter((line) => line.length > 0);
       return scheduleLines.length > 0 ? `●今日の予定\n${scheduleLines.join('\n')}` : '';
     }
 
@@ -1113,8 +1111,7 @@
 
         const content = (sel.text || '').trim();
         if (content) {
-          const formattedContent = content.startsWith('→') ? content : `→${content}`;
-          eventItems.push(`・${ev.title}\n${formattedContent}`);
+          eventItems.push(`・${ev.title}\n${content}`);
         } else {
           eventItems.push(`・${ev.title}`);
         }
@@ -1143,7 +1140,6 @@
       return dateStr;
     }
 
-    // 日付の直下に最初のブロックを配置し、以降のブロック間は空行で区切る
     const [firstBlock, ...restBlocks] = sectionBlocks;
     return [`${dateStr}\n${firstBlock}`, ...restBlocks].join('\n\n');
   }
@@ -1240,7 +1236,7 @@
           .map((c) => `・${c.label}: ${c.text || '（空欄）'}`)
           .join('\n');
       } else {
-        desc.textContent = ev.template_text ? `→${ev.template_text}` : '（タイトルのみ出力）';
+        desc.textContent = ev.template_text || '（タイトルのみ出力）';
       }
 
       info.appendChild(titleRow);
