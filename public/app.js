@@ -1,11 +1,13 @@
 (() => {
   const LAST_ALLIANCE_KEY = 'wos_last_alliance_id';
+  const DEFAULT_SECTION_ORDER = ['free_top', 'schedule', 'events', 'free_bottom'];
 
   const state = {
     isShareMode: false,
     shareToken: '',
     alliances: [],
     currentAllianceId: 'default',
+    sectionOrder: [...DEFAULT_SECTION_ORDER],
     events: [],
     tempEvents: [],
     tempIdCounter: 1,
@@ -42,6 +44,9 @@
   // 通知作成画面
   const noticeDateInput = document.getElementById('noticeDate');
   const datePreview = document.getElementById('datePreview');
+  const sortableSections = document.getElementById('sortableSections');
+  const topFreeTextInput = document.getElementById('topFreeText');
+  const saveTopFreeTextDefaultBtn = document.getElementById('saveTopFreeTextDefaultBtn');
   const todayScheduleInput = document.getElementById('todaySchedule');
   const eventSelectList = document.getElementById('eventSelectList');
   const freeTextInput = document.getElementById('freeText');
@@ -116,6 +121,22 @@
     return `${m}月${d}日(${weekdays[date.getDay()]})`;
   }
 
+  function normalizeSectionOrder(raw) {
+    const list = Array.isArray(raw) ? raw : [];
+    const valid = [];
+    for (const key of list) {
+      if (DEFAULT_SECTION_ORDER.includes(key) && !valid.includes(key)) {
+        valid.push(key);
+      }
+    }
+    for (const key of DEFAULT_SECTION_ORDER) {
+      if (!valid.includes(key)) {
+        valid.push(key);
+      }
+    }
+    return valid;
+  }
+
   async function copyToClipboard(text) {
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -161,7 +182,6 @@
   }
 
   function syncUrlWithAlliance(allianceId) {
-    // 外部共有モードでは ?share=xxx を維持し、URL書き換え・他同盟記憶を行わない
     if (state.isShareMode) return;
     try {
       const url = new URL(window.location.href);
@@ -247,7 +267,210 @@
       .filter((c) => c.label || c.text);
   }
 
-  // ===== ドラッグ並び替え =====
+  // ===== 大項目（4セクション）の並び替え =====
+  function applySectionOrder(order) {
+    state.sectionOrder = normalizeSectionOrder(order);
+    const cardMap = new Map();
+    sortableSections.querySelectorAll(':scope > .section-card').forEach((card) => {
+      cardMap.set(card.dataset.sectionKey, card);
+    });
+
+    state.sectionOrder.forEach((key, idx) => {
+      const card = cardMap.get(key);
+      if (!card) return;
+      sortableSections.appendChild(card);
+
+      const numEl = card.querySelector('.section-num');
+      if (numEl) numEl.textContent = `${idx + 2}.`;
+
+      const upBtn = card.querySelector('.section-move-btn[data-dir="-1"]');
+      const downBtn = card.querySelector('.section-move-btn[data-dir="1"]');
+      if (upBtn) upBtn.disabled = idx === 0;
+      if (downBtn) downBtn.disabled = idx === state.sectionOrder.length - 1;
+    });
+  }
+
+  async function saveSectionOrder(newOrder) {
+    const previousOrder = [...state.sectionOrder];
+    const normalized = normalizeSectionOrder(newOrder);
+    applySectionOrder(normalized);
+
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          alliance_id: state.currentAllianceId,
+          section_order: normalized
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '項目の並び順保存に失敗しました');
+      }
+      showToast('項目の並び順を保存しました');
+    } catch (err) {
+      alert(err.message);
+      applySectionOrder(previousOrder);
+    }
+  }
+
+  function setupSectionDragSort() {
+    let dragCard = null;
+    let placeholder = null;
+    let activeHandle = null;
+    let activePointerId = null;
+    let offsetY = 0;
+    let initialOrder = [];
+
+    function getOrder() {
+      return Array.from(sortableSections.querySelectorAll(':scope > .section-card')).map(
+        (el) => el.dataset.sectionKey
+      );
+    }
+
+    function onPointerMove(e) {
+      if (!dragCard || e.pointerId !== activePointerId) return;
+      e.preventDefault();
+
+      dragCard.style.top = `${e.clientY - offsetY}px`;
+
+      const edge = 80;
+      if (e.clientY < edge) {
+        window.scrollBy(0, -12);
+      } else if (e.clientY > window.innerHeight - edge) {
+        window.scrollBy(0, 12);
+      }
+
+      const siblings = Array.from(
+        sortableSections.querySelectorAll(':scope > .section-card')
+      ).filter((el) => el !== dragCard);
+
+      let inserted = false;
+      for (const sibling of siblings) {
+        const box = sibling.getBoundingClientRect();
+        const midY = box.top + box.height / 2;
+        if (e.clientY < midY) {
+          sortableSections.insertBefore(placeholder, sibling);
+          inserted = true;
+          break;
+        }
+      }
+
+      if (!inserted) {
+        sortableSections.appendChild(placeholder);
+      }
+    }
+
+    function finishDrag(e) {
+      if (!dragCard || e.pointerId !== activePointerId) return;
+
+      if (activeHandle) {
+        activeHandle.removeEventListener('pointermove', onPointerMove);
+        activeHandle.removeEventListener('pointerup', finishDrag);
+        activeHandle.removeEventListener('pointercancel', finishDrag);
+        try {
+          activeHandle.releasePointerCapture(activePointerId);
+        } catch {
+          // 無視
+        }
+      }
+
+      dragCard.classList.remove('section-dragging');
+      dragCard.style.position = '';
+      dragCard.style.top = '';
+      dragCard.style.left = '';
+      dragCard.style.width = '';
+      dragCard.style.zIndex = '';
+      dragCard.style.pointerEvents = '';
+
+      if (placeholder && placeholder.parentNode) {
+        placeholder.replaceWith(dragCard);
+      }
+
+      document.body.classList.remove('is-dragging');
+
+      const newOrder = getOrder();
+      const changed =
+        newOrder.length === initialOrder.length &&
+        newOrder.some((key, idx) => key !== initialOrder[idx]);
+
+      dragCard = null;
+      placeholder = null;
+      activeHandle = null;
+      activePointerId = null;
+
+      if (changed) {
+        saveSectionOrder(newOrder);
+      }
+    }
+
+    sortableSections.addEventListener('pointerdown', (e) => {
+      const handle = e.target.closest('.section-drag-handle');
+      if (!handle || !sortableSections.contains(handle)) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+      const card = handle.closest('.section-card');
+      if (!card || card.parentElement !== sortableSections) return;
+
+      e.preventDefault();
+
+      dragCard = card;
+      activeHandle = handle;
+      activePointerId = e.pointerId;
+      initialOrder = getOrder();
+
+      const rect = dragCard.getBoundingClientRect();
+      // コンパクト表示したときに掴み位置がズレないよう上端寄りに合わせる
+      offsetY = Math.min(e.clientY - rect.top, 36);
+
+      placeholder = document.createElement('div');
+      placeholder.className = 'section-drag-placeholder';
+      placeholder.style.height = '76px';
+
+      dragCard.parentNode.insertBefore(placeholder, dragCard);
+
+      dragCard.classList.add('section-dragging');
+      dragCard.style.position = 'fixed';
+      dragCard.style.top = `${e.clientY - offsetY}px`;
+      dragCard.style.left = `${rect.left}px`;
+      dragCard.style.width = `${rect.width}px`;
+      dragCard.style.zIndex = '90';
+      dragCard.style.pointerEvents = 'none';
+
+      document.body.classList.add('is-dragging');
+
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {
+        // 無視
+      }
+
+      handle.addEventListener('pointermove', onPointerMove);
+      handle.addEventListener('pointerup', finishDrag);
+      handle.addEventListener('pointercancel', finishDrag);
+    });
+
+    // ↑↓ボタンによる並び替え
+    sortableSections.addEventListener('click', (e) => {
+      const btn = e.target.closest('.section-move-btn');
+      if (!btn || btn.disabled) return;
+      const card = btn.closest('.section-card');
+      if (!card) return;
+
+      const key = card.dataset.sectionKey;
+      const dir = Number(btn.dataset.dir);
+      const idx = state.sectionOrder.indexOf(key);
+      const targetIdx = idx + dir;
+      if (idx === -1 || targetIdx < 0 || targetIdx >= state.sectionOrder.length) return;
+
+      const nextOrder = [...state.sectionOrder];
+      [nextOrder[idx], nextOrder[targetIdx]] = [nextOrder[targetIdx], nextOrder[idx]];
+      saveSectionOrder(nextOrder);
+    });
+  }
+
+  // ===== イベント行のドラッグ並び替え =====
   function setupDragSort(container, itemSelector, onReorder) {
     let dragItem = null;
     let placeholder = null;
@@ -411,7 +634,7 @@
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || '並び順の保存に失敗しました');
       }
-      showToast('並び順を保存しました');
+      showToast('イベントの並び順を保存しました');
     } catch (err) {
       alert(err.message);
       await fetchEvents();
@@ -443,7 +666,6 @@
       return;
     }
 
-    // 上部プルダウン
     allianceSelect.innerHTML = '';
     state.alliances.forEach((al) => {
       const opt = document.createElement('option');
@@ -453,7 +675,6 @@
       allianceSelect.appendChild(opt);
     });
 
-    // コピー元プルダウン
     copyFromAllianceSelect.innerHTML = '';
     const emptyOpt = document.createElement('option');
     emptyOpt.value = '';
@@ -468,7 +689,6 @@
       copyFromAllianceSelect.appendChild(opt);
     });
 
-    // 同盟一覧（モーダル内）
     allianceManageList.innerHTML = '';
     state.alliances.forEach((al) => {
       const isCurrent = al.id === state.currentAllianceId;
@@ -698,9 +918,15 @@
       );
       if (!res.ok) return;
       const data = await res.json();
-      freeTextInput.value = typeof data.default_free_text === 'string' ? data.default_free_text : '';
+      topFreeTextInput.value =
+        typeof data.default_top_free_text === 'string' ? data.default_top_free_text : '';
+      freeTextInput.value =
+        typeof data.default_free_text === 'string' ? data.default_free_text : '';
+      applySectionOrder(data.section_order || DEFAULT_SECTION_ORDER);
     } catch {
+      topFreeTextInput.value = '';
       freeTextInput.value = '';
+      applySectionOrder(DEFAULT_SECTION_ORDER);
     }
   }
 
@@ -862,50 +1088,64 @@
     quickAddModal.classList.add('hidden');
   }
 
-  // ===== 通知テキスト組み立て =====
+  // ===== 通知テキスト組み立て（大項目の並び順をそのまま反映） =====
+  function buildSectionBlock(key) {
+    if (key === 'free_top') {
+      const text = topFreeTextInput.value.replace(/^\s*\n+|\n+\s*$/g, '');
+      return text.trim() ? text : '';
+    }
+
+    if (key === 'schedule') {
+      const scheduleLines = todayScheduleInput.value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((line) => (line.startsWith('・') ? line : `・${line}`));
+      return scheduleLines.length > 0 ? `●今日の予定\n${scheduleLines.join('\n')}` : '';
+    }
+
+    if (key === 'events') {
+      const eventItems = [];
+      const combinedEvents = [...state.events, ...state.tempEvents];
+      combinedEvents.forEach((ev) => {
+        const sel = state.selections[String(ev.id)];
+        if (!sel || !sel.checked) return;
+
+        const content = (sel.text || '').trim();
+        if (content) {
+          const formattedContent = content.startsWith('→') ? content : `→${content}`;
+          eventItems.push(`・${ev.title}\n${formattedContent}`);
+        } else {
+          eventItems.push(`・${ev.title}`);
+        }
+      });
+      return eventItems.length > 0 ? `●イベント\n${eventItems.join('\n\n')}` : '';
+    }
+
+    if (key === 'free_bottom') {
+      const text = freeTextInput.value.replace(/^\s*\n+|\n+\s*$/g, '');
+      return text.trim() ? text : '';
+    }
+
+    return '';
+  }
+
   function buildNoticeText() {
-    const blocks = [];
-
     const dateStr = formatJapaneseDate(noticeDateInput.value);
-    const scheduleLines = todayScheduleInput.value
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line) => (line.startsWith('・') ? line : `・${line}`));
+    const sectionBlocks = state.sectionOrder
+      .map((key) => buildSectionBlock(key))
+      .filter((block) => block.length > 0);
 
-    let topBlock = dateStr;
-    if (scheduleLines.length > 0) {
-      topBlock += `\n●今日の予定\n${scheduleLines.join('\n')}`;
+    if (!dateStr) {
+      return sectionBlocks.join('\n\n');
     }
-    if (topBlock) {
-      blocks.push(topBlock);
+    if (sectionBlocks.length === 0) {
+      return dateStr;
     }
 
-    const eventItems = [];
-    const combinedEvents = [...state.events, ...state.tempEvents];
-    combinedEvents.forEach((ev) => {
-      const sel = state.selections[String(ev.id)];
-      if (!sel || !sel.checked) return;
-
-      const content = (sel.text || '').trim();
-      if (content) {
-        const formattedContent = content.startsWith('→') ? content : `→${content}`;
-        eventItems.push(`・${ev.title}\n${formattedContent}`);
-      } else {
-        eventItems.push(`・${ev.title}`);
-      }
-    });
-
-    if (eventItems.length > 0) {
-      blocks.push(`●イベント\n${eventItems.join('\n\n')}`);
-    }
-
-    const freeText = freeTextInput.value.replace(/^\s*\n+|\n+\s*$/g, '');
-    if (freeText.trim()) {
-      blocks.push(freeText);
-    }
-
-    return blocks.join('\n\n');
+    // 日付の直下に最初のブロックを配置し、以降のブロック間は空行で区切る
+    const [firstBlock, ...restBlocks] = sectionBlocks;
+    return [`${dateStr}\n${firstBlock}`, ...restBlocks].join('\n\n');
   }
 
   function updateCharCount() {
@@ -1120,6 +1360,24 @@
     renderEventSelection();
   });
 
+  saveTopFreeTextDefaultBtn.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          alliance_id: state.currentAllianceId,
+          default_top_free_text: topFreeTextInput.value
+        })
+      });
+      if (!res.ok) throw new Error('保存に失敗しました');
+      const current = getCurrentAlliance();
+      showToast(`「${current?.name || '現在'}」の自由記述欄（上）を保存しました`);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
   saveFreeTextDefaultBtn.addEventListener('click', async () => {
     try {
       const res = await fetch('/api/settings', {
@@ -1132,7 +1390,7 @@
       });
       if (!res.ok) throw new Error('保存に失敗しました');
       const current = getCurrentAlliance();
-      showToast(`「${current?.name || '現在'}」の自由記述欄を保存しました`);
+      showToast(`「${current?.name || '現在'}」の自由記述欄（下）を保存しました`);
     } catch (err) {
       alert(err.message);
     }
@@ -1401,6 +1659,7 @@
     noticeDateInput.value = getTodayLocalISO();
     datePreview.textContent = formatJapaneseDate(noticeDateInput.value);
 
+    setupSectionDragSort();
     setupDragSort(eventSelectList, '.event-row', saveEventOrder);
     setupDragSort(adminEventList, '.admin-item', saveEventOrder);
     setupPWA();
