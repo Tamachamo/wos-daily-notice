@@ -987,6 +987,7 @@
       });
       checkWrap.appendChild(removeTempBtn);
     }
+    
 
     const editorCol = document.createElement('div');
     editorCol.className = 'event-editor-col';
