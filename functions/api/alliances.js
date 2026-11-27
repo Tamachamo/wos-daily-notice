@@ -1,4 +1,5 @@
 const DEFAULT_SECTION_ORDER_JSON = '["free_top","schedule","events","free_bottom"]';
+let schemaReady = false;
 
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -23,11 +24,88 @@ function generateShareToken() {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
 }
 
+async function ensureSchema(db) {
+  if (schemaReady) return;
+
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS alliances (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      default_top_free_text TEXT NOT NULL DEFAULT '',
+      default_free_text TEXT NOT NULL DEFAULT '',
+      section_order_json TEXT NOT NULL DEFAULT '["free_top","schedule","events","free_bottom"]',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      share_token TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `).run();
+
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alliance_id TEXT NOT NULL DEFAULT 'default',
+      title TEXT NOT NULL,
+      content_type TEXT NOT NULL DEFAULT 'template',
+      template_text TEXT NOT NULL DEFAULT '',
+      choices_json TEXT NOT NULL DEFAULT '[]',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `).run();
+
+  const { results: aCols } = await db.prepare('PRAGMA table_info(alliances)').all();
+  const aColNames = new Set(aCols.map((c) => c.name));
+
+  const aAlterSqls = [];
+  if (!aColNames.has('default_top_free_text')) {
+    aAlterSqls.push("ALTER TABLE alliances ADD COLUMN default_top_free_text TEXT NOT NULL DEFAULT ''");
+  }
+  if (!aColNames.has('default_free_text')) {
+    aAlterSqls.push("ALTER TABLE alliances ADD COLUMN default_free_text TEXT NOT NULL DEFAULT ''");
+  }
+  if (!aColNames.has('section_order_json')) {
+    aAlterSqls.push(`ALTER TABLE alliances ADD COLUMN section_order_json TEXT NOT NULL DEFAULT '${DEFAULT_SECTION_ORDER_JSON}'`);
+  }
+  if (!aColNames.has('sort_order')) {
+    aAlterSqls.push('ALTER TABLE alliances ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!aColNames.has('share_token')) {
+    aAlterSqls.push('ALTER TABLE alliances ADD COLUMN share_token TEXT');
+  }
+
+  for (const sql of aAlterSqls) {
+    try {
+      await db.prepare(sql).run();
+    } catch {
+      // 既に存在する場合は無視
+    }
+  }
+
+  const { results: eCols } = await db.prepare('PRAGMA table_info(events)').all();
+  const eColNames = new Set(eCols.map((c) => c.name));
+  if (!eColNames.has('alliance_id')) {
+    try {
+      await db.prepare("ALTER TABLE events ADD COLUMN alliance_id TEXT NOT NULL DEFAULT 'default'").run();
+    } catch {
+      // 無視
+    }
+  }
+
+  await db.prepare(
+    "UPDATE alliances SET share_token = lower(hex(randomblob(8))) WHERE share_token IS NULL OR share_token = ''"
+  ).run();
+
+  schemaReady = true;
+}
+
 export async function onRequestGet({ request, env }) {
   if (!env.DB) {
     return jsonResponse({ error: 'D1バインディング(DB)が設定されていません' }, 500);
   }
   try {
+    await ensureSchema(env.DB);
     const url = new URL(request.url);
     const shareToken = (url.searchParams.get('share_token') || '').trim();
 
@@ -51,9 +129,9 @@ export async function onRequestGet({ request, env }) {
     if (results.length === 0) {
       const token = generateShareToken();
       await env.DB.prepare(
-        "INSERT OR IGNORE INTO alliances (id, name, default_free_text, sort_order, share_token) VALUES ('default', 'メイン同盟', '', 1, ?)"
+        "INSERT OR IGNORE INTO alliances (id, name, default_top_free_text, default_free_text, section_order_json, sort_order, share_token) VALUES ('default', 'メイン同盟', '', '', ?, 1, ?)"
       )
-        .bind(token)
+        .bind(DEFAULT_SECTION_ORDER_JSON, token)
         .run();
       const retry = await env.DB.prepare(
         'SELECT id, name, default_free_text, sort_order, share_token FROM alliances ORDER BY sort_order ASC, created_at ASC'
@@ -72,6 +150,7 @@ export async function onRequestPost({ request, env }) {
     return jsonResponse({ error: 'D1バインディング(DB)が設定されていません' }, 500);
   }
   try {
+    await ensureSchema(env.DB);
     const body = await request.json();
     const name = String(body.name || '').trim();
     if (!name) {
