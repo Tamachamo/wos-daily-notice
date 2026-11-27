@@ -959,3 +959,84 @@ body.is-dragging {
   padding: 4px 9px;
   font-size: 0.78rem;
 }
+
+/* ===== 作成画面：項目ごとの上書き保存トグル＆削除ボタン ===== */
+.event-delete-btn {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.event-delete-btn:hover {
+  opacity: 1;
+}
+
+.event-item-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.event-item-footer.is-dirty {
+  border-color: rgba(148, 163, 184, 0.65);
+}
+
+.event-item-footer.is-dirty.will-overwrite {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: var(--primary);
+}
+
+.overwrite-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.overwrite-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.event-item-footer.will-overwrite .overwrite-toggle {
+  color: var(--primary);
+}
+
+.event-item-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.overwrite-status-badge {
+  font-size: 0.74rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.event-item-footer.will-overwrite .overwrite-status-badge {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.btn-xs {
+  padding: 4px 9px;
+  font-size: 0.78rem;
+}
