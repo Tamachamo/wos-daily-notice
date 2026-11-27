@@ -1,4 +1,6 @@
 const DEFAULT_SECTION_ORDER = ['free_top', 'schedule', 'events', 'free_bottom'];
+const DEFAULT_SECTION_ORDER_JSON = JSON.stringify(DEFAULT_SECTION_ORDER);
+let settingsSchemaReady = false;
 
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -34,11 +36,33 @@ function normalizeSectionOrder(raw) {
   return valid;
 }
 
+async function ensureSettingsSchema(db) {
+  if (settingsSchemaReady) return;
+  const { results } = await db.prepare('PRAGMA table_info(alliances)').all();
+  const cols = new Set(results.map((c) => c.name));
+  if (!cols.has('default_top_free_text')) {
+    try {
+      await db.prepare("ALTER TABLE alliances ADD COLUMN default_top_free_text TEXT NOT NULL DEFAULT ''").run();
+    } catch {
+      // 無視
+    }
+  }
+  if (!cols.has('section_order_json')) {
+    try {
+      await db.prepare(`ALTER TABLE alliances ADD COLUMN section_order_json TEXT NOT NULL DEFAULT '${DEFAULT_SECTION_ORDER_JSON}'`).run();
+    } catch {
+      // 無視
+    }
+  }
+  settingsSchemaReady = true;
+}
+
 export async function onRequestGet({ request, env }) {
   if (!env.DB) {
     return jsonResponse({ error: 'D1バインディング(DB)が設定されていません' }, 500);
   }
   try {
+    await ensureSettingsSchema(env.DB);
     const url = new URL(request.url);
     const allianceId = (url.searchParams.get('alliance_id') || 'default').trim();
     const row = await env.DB.prepare(
@@ -62,6 +86,7 @@ export async function onRequestPut({ request, env }) {
     return jsonResponse({ error: 'D1バインディング(DB)が設定されていません' }, 500);
   }
   try {
+    await ensureSettingsSchema(env.DB);
     const body = await request.json();
     const allianceId = String(body.alliance_id || 'default').trim() || 'default';
 
